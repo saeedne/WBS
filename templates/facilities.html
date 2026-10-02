@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+
+{% block title %}ثبت گزارش روزانه تأسیسات{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">فرم ثبت گزارش روزانه تأسیسات</h1>
+    <p class="text-gray-500 text-sm">لطفاً اطلاعات فعالیت‌های تأسیسات را وارد کنید.</p>
+</header>
+
+<form action="/add_facilities_log" method="post" class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div>
+            <label for="date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+            <input type="text" id="date_fa" name="date_fa" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   placeholder="1404/01/01">
+        </div>
+        <div>
+            <label for="facility_name" class="block text-sm font-medium text-gray-700">نام تاسیسات کار:</label>
+            <input type="text" id="facility_name" name="facility_name" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="facility_name-list">
+            <datalist id="facility_name-list">
+                <!-- گزینه‌ها توسط جاوااسکریپت پر می‌شوند -->
+            </datalist>
+        </div>
+        <div>
+            <label for="companion_name" class="block text-sm font-medium text-gray-700">نفر همراه:</label>
+            <input type="text" id="companion_name" name="companion_name"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="companion_name-list">
+            <datalist id="companion_name-list">
+                <!-- گزینه‌ها توسط جاوااسکریپت پر می‌شوند -->
+            </datalist>
+        </div>
+        <div>
+            <label for="activity_location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+            <input type="text" id="activity_location" name="activity_location" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="activity_location-list">
+            <datalist id="activity_location-list">
+                <!-- گزینه‌ها توسط جاوااسکریپت پر می‌شوند -->
+            </datalist>
+        </div>
+        <div class="lg:col-span-2">
+            <label for="activity_description" class="block text-sm font-medium text-gray-700">شرح فعالیت:</label>
+            <textarea id="activity_description" name="activity_description" rows="3" required
+                      class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"></textarea>
+        </div>
+        <div>
+            <label for="duration" class="block text-sm font-medium text-gray-700">مدت زمان انجام (مثال: ۲ ساعت):</label>
+            <input type="text" id="duration" name="duration"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+            <label for="materials" class="block text-sm font-medium text-gray-700">مواد و مصالح مصرفی:</label>
+            <input type="text" id="materials" name="materials"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+            <label for="material_source" class="block text-sm font-medium text-gray-700">محل تامین مواد و مصالح:</label>
+            <input type="text" id="material_source" name="material_source"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="material_source-list">
+            <datalist id="material_source-list">
+                <!-- گزینه‌ها توسط جاوااسکریپت پر می‌شوند -->
+            </datalist>
+        </div>
+    </div>
+
+    <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+        ثبت گزارش
+    </button>
+</form>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    kamaDatepicker('date_fa', {
+        forceSelected: true,
+        buttonsColor: "red",
+        forceFarsiDigits: true,
+        markToday:true,
+        markHolidays:true,
+        gotoToday:true,
+        closeAfterSelect:true
+    });
+
+    // Autocomplete for facility_name and companion_name from present employees
+    fetch(`/autocomplete/present_employees`)
+        .then(response => response.json())
+        .then(data => {
+            const facilityDatalist = document.getElementById('facility_name-list');
+            const companionDatalist = document.getElementById('companion_name-list');
+            facilityDatalist.innerHTML = '';
+            companionDatalist.innerHTML = '';
+            data.forEach(item => {
+                const option1 = document.createElement('option');
+                option1.value = item;
+                facilityDatalist.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = item;
+                companionDatalist.appendChild(option2);
+            });
+        })
+        .catch(error => console.error(`Error fetching autocomplete data for present employees:`, error));
+
+
+    // Autocomplete for other fields from facilities_logs
+    const facilitiesFieldsToAutocomplete = ['activity_location', 'material_source'];
+    facilitiesFieldsToAutocomplete.forEach(field => {
+        fetch(`/autocomplete/facilities_field/${field}`)
+            .then(response => response.json())
+            .then(data => {
+                const datalist = document.getElementById(`${field}-list`);
+                datalist.innerHTML = ''; // Clear previous options
+                data.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    datalist.appendChild(option);
+                });
+            })
+            .catch(error => console.error(`Error fetching autocomplete data for ${field}:`, error));
+    });
+});
+</script>
+{% endblock %}

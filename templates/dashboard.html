@@ -1,0 +1,1605 @@
+{% extends "layout.html" %}
+
+{% block title %}داشبورد{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+
+<style>
+    .dashboard-card {
+        min-height: 260px;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">
+        داشبورد مدیریتی
+    </h1>
+
+    <p class="text-gray-500 text-sm">
+        فقط اطلاعات بخش‌هایی که اجازهٔ مشاهدهٔ آن‌ها را دارید نمایش داده می‌شود.
+    </p>
+</header>
+
+
+{% if session['user']['username'] == 'admin'
+      or session['user']['permissions'].get('admin_dashboard', false) %}
+
+<div class="flex justify-center gap-2 mb-6">
+
+    <a href="/admin_dashboard"
+       class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-amber-900 transition duration-300">
+        رفتن به داشبورد مدیریت
+    </a>
+
+    <a href="/logout"
+       class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-amber-900 transition duration-300">
+        خروج از حساب کاربری {{ session['user']['username'] }}
+    </a>
+
+</div>
+
+{% else %}
+
+<div class="flex justify-center mb-6">
+
+    <a href="/logout"
+       class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-amber-900 transition duration-300">
+        خروج از حساب کاربری {{ session['user']['username'] }}
+    </a>
+
+</div>
+
+{% endif %}
+
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+
+    <!-- ===================================================== -->
+    <!-- کارکنان حاضر امروز -->
+    <!-- ===================================================== -->
+
+    {% if dashboard_sections.employees %}
+
+    <section class="dashboard-card bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <div class="flex items-center justify-between mb-4">
+
+            <a href="/reports"
+               class="text-xl font-bold text-gray-800 hover:text-indigo-600 transition">
+                کارکنان حاضر امروز
+            </a>
+
+            {% if dashboard_actions.employees %}
+
+            <a href="/index"
+               class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                ثبت تردد ←
+            </a>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="grid grid-cols-3 gap-3 mb-4 text-center">
+
+            <div class="bg-blue-50 p-2 rounded">
+                <div class="font-bold">
+                    {{ total_employees }}
+                </div>
+                <div class="text-xs">
+                    کل کارکنان
+                </div>
+            </div>
+
+            <div class="bg-green-50 p-2 rounded">
+                <div class="font-bold">
+                    {{ present_employees_count }}
+                </div>
+                <div class="text-xs">
+                    حاضر
+                </div>
+            </div>
+
+            <div class="bg-yellow-50 p-2 rounded">
+                <div class="font-bold">
+                    {{ vacation_count + break_count }}
+                </div>
+                <div class="text-xs">
+                    مرخصی/استراحت
+                </div>
+            </div>
+
+        </div>
+
+
+        <div class="overflow-x-auto max-h-64">
+
+            <table class="min-w-full text-sm divide-y divide-gray-200">
+
+                <thead class="bg-gray-50">
+
+                    <tr>
+
+                        <th class="px-4 py-2 text-right">
+                            نام
+                        </th>
+
+                        <th class="px-4 py-2 text-right">
+                            محل فعالیت
+                        </th>
+
+                        <th class="px-4 py-2 text-right">
+                            شرح فعالیت
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody class="divide-y divide-gray-200">
+
+                    {% for employee in present_employees %}
+
+                    <tr>
+
+                        <td class="px-4 py-2">
+                            {{ employee.name }}
+                        </td>
+
+                        <td class="px-4 py-2">
+                            {{ employee.activity_location or '---' }}
+                        </td>
+
+                        <td class="px-4 py-2">
+                            {{ employee.activity_description or '---' }}
+                        </td>
+
+                    </tr>
+
+                    {% else %}
+
+                    <tr>
+
+                        <td colspan="3"
+                            class="px-4 py-3 text-center text-gray-400">
+                            هیچ کارمند حاضری یافت نشد.
+                        </td>
+
+                    </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+
+
+    <!-- ===================================================== -->
+    <!-- گزارش هزینه های تنخواه -->
+    <!-- ===================================================== -->
+
+    {% if dashboard_sections.petty_cash %}
+
+    <section class="dashboard-card bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <div class="flex items-center justify-between mb-4">
+
+            <a href="/petty_cash_reports"
+               class="text-xl font-bold text-gray-800 hover:text-indigo-600 transition">
+                گزارش هزینه‌ها
+            </a>
+
+            {% if dashboard_actions.petty_cash %}
+
+            <a href="/petty_cash"
+               class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                ثبت هزینه ←
+            </a>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+            <div>
+
+                <label for="petty_cash_start_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ شروع:
+                </label>
+
+                <input id="petty_cash_start_date"
+                       type="text"
+                       placeholder="تاریخ شروع"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+
+            <div>
+
+                <label for="petty_cash_end_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ پایان:
+                </label>
+
+                <input id="petty_cash_end_date"
+                       type="text"
+                       placeholder="تاریخ پایان"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+        </div>
+
+
+        <button id="show_petty_cash_chart_btn"
+                class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">
+
+            نمایش نمودار
+
+        </button>
+
+
+        <div id="petty_cash_chart_container"
+             class="h-52 mt-4">
+
+            <p class="text-center text-gray-500">
+                در حال آماده‌سازی اطلاعات...
+            </p>
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+
+
+    <!-- ===================================================== -->
+    <!-- گزارش روزمزد -->
+    <!-- ===================================================== -->
+
+    {% if dashboard_sections.daily_workers %}
+
+    <section class="dashboard-card bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <div class="flex items-center justify-between mb-4">
+
+            <a href="/daily_worker_reports"
+               class="text-xl font-bold text-gray-800 hover:text-indigo-600 transition">
+                گزارش نفرات
+            </a>
+
+            {% if dashboard_actions.daily_workers %}
+
+            <a href="/daily_worker"
+               class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                ثبت نفرات ←
+            </a>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+            <div>
+
+                <label for="daily_worker_start_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ شروع:
+                </label>
+
+                <input id="daily_worker_start_date"
+                       type="text"
+                       placeholder="تاریخ شروع"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+
+            <div>
+
+                <label for="daily_worker_end_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ پایان:
+                </label>
+
+                <input id="daily_worker_end_date"
+                       type="text"
+                       placeholder="تاریخ پایان"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+        </div>
+
+
+        <button id="show_daily_worker_report_btn"
+                class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">
+
+            نمایش گزارش
+
+        </button>
+
+
+        <div id="daily_worker_report_container"
+             class="max-h-52 overflow-auto mt-4">
+
+            <p class="text-center text-gray-500">
+                در حال آماده‌سازی اطلاعات...
+            </p>
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+
+
+    <!-- ===================================================== -->
+    <!-- گزارش تأسیسات -->
+    <!-- ===================================================== -->
+
+    {% if dashboard_sections.facilities %}
+
+    <section class="dashboard-card bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <div class="flex items-center justify-between mb-4">
+
+            <a href="/facilities_reports"
+               class="text-xl font-bold text-gray-800 hover:text-indigo-600 transition">
+                گزارش تأسیسات
+            </a>
+
+            {% if dashboard_actions.facilities %}
+
+            <a href="/facilities"
+               class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+                ثبت تأسیسات ←
+            </a>
+
+            {% endif %}
+
+        </div>
+
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+
+            <div>
+
+                <label for="facilities_start_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ شروع:
+                </label>
+
+                <input id="facilities_start_date"
+                       type="text"
+                       placeholder="تاریخ شروع"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+
+            <div>
+
+                <label for="facilities_end_date"
+                       class="block text-sm font-medium text-gray-700 mb-1">
+                    تاریخ پایان:
+                </label>
+
+                <input id="facilities_end_date"
+                       type="text"
+                       placeholder="تاریخ پایان"
+                       class="w-full p-2 border rounded-lg">
+
+            </div>
+
+        </div>
+
+
+        <button id="show_facilities_report_btn"
+                class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">
+
+            نمایش گزارش
+
+        </button>
+
+
+        <div id="facilities_report_container"
+             class="max-h-52 overflow-auto mt-4">
+
+            <p class="text-center text-gray-500">
+                در حال آماده‌سازی اطلاعات...
+            </p>
+
+        </div>
+
+    </section>
+
+    {% endif %}
+
+</div>
+
+
+<!-- ===================================================== -->
+<!-- پیشرفت فیزیکی پروژه -->
+<!-- ===================================================== -->
+
+{% if dashboard_sections.project_progress %}
+
+<section class="mt-6 bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+    <div class="flex items-center justify-between mb-4">
+
+        <a href="/project_progress"
+           class="text-xl font-bold text-gray-800 hover:text-indigo-600 transition">
+            پیشرفت فیزیکی پروژه
+        </a>
+
+        {% if dashboard_actions.project_wbs %}
+
+        <a href="/project_wbs"
+           class="text-sm font-semibold text-indigo-600 hover:text-indigo-800">
+            مدیریت ساختار شکست ←
+        </a>
+
+        {% endif %}
+
+    </div>
+
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5 text-center">
+
+        <div class="bg-indigo-50 p-3 rounded-lg">
+
+            <div id="project-progress-value"
+                 class="text-2xl font-bold">
+                ۰٪
+            </div>
+
+            <div class="text-xs">
+                پیشرفت کل پروژه
+            </div>
+
+        </div>
+
+
+        <div class="bg-blue-50 p-3 rounded-lg">
+
+            <div id="project-weight-value"
+                 class="text-2xl font-bold">
+                ۰٪
+            </div>
+
+            <div class="text-xs">
+                مجموع وزن WBS
+            </div>
+
+        </div>
+
+
+        <div class="bg-green-50 p-3 rounded-lg">
+
+            <div id="project-wbs-items"
+                 class="text-2xl font-bold">
+                ۰
+            </div>
+
+            <div class="text-xs">
+                تعداد آیتم‌ها
+            </div>
+
+        </div>
+
+
+        <div class="bg-yellow-50 p-3 rounded-lg">
+
+            <div id="project-active-items"
+                 class="text-2xl font-bold">
+                ۰
+            </div>
+
+            <div class="text-xs">
+                آیتم‌های دارای پیشرفت
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <div class="h-72">
+
+            <canvas id="dashboardProjectProgressDonut"></canvas>
+
+        </div>
+
+
+        <div class="h-72">
+
+            <canvas id="dashboardProjectProgressBar"></canvas>
+
+        </div>
+
+    </div>
+
+</section>
+
+{% endif %}
+
+
+{% endblock %}
+
+
+
+{% block scripts_extra %}
+
+<script src="/static/jquery.min.js"></script>
+<script src="/static/kamadatepicker.min.js"></script>
+<script src="/static/chart.min.js"></script>
+
+
+<script>
+
+document.addEventListener('DOMContentLoaded', () => {
+
+
+    /* ========================================================
+       تبدیل ارقام فارسی و عربی به انگلیسی
+       ======================================================== */
+
+    function toEnglishDigits(value) {
+
+        return String(value)
+            .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+
+    }
+
+
+    /* ========================================================
+       تبدیل تاریخ میلادی به تاریخ جلالی
+       ======================================================== */
+
+    function formatJalaliDate(date) {
+
+        const parts = date
+            .toLocaleDateString('fa-IR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            })
+            .split('/');
+
+        if (parts.length !== 3) {
+            return '';
+        }
+
+        return parts.map(toEnglishDigits).join('/');
+
+    }
+
+
+    /* ========================================================
+       تعیین تاریخ پیش فرض
+
+       تاریخ شروع = 10 روز قبل
+       تاریخ پایان = امروز
+       ======================================================== */
+
+    function setInitialDates() {
+
+        const today = new Date();
+
+        const tenDaysAgo = new Date(today);
+
+        tenDaysAgo.setDate(
+            today.getDate() - 15
+        );
+
+
+        const startDate =
+            formatJalaliDate(tenDaysAgo);
+
+        const endDate =
+            formatJalaliDate(today);
+
+
+        const datePairs = [
+
+            [
+                'petty_cash_start_date',
+                'petty_cash_end_date'
+            ],
+
+            [
+                'daily_worker_start_date',
+                'daily_worker_end_date'
+            ],
+
+            [
+                'facilities_start_date',
+                'facilities_end_date'
+            ]
+
+        ];
+
+
+        datePairs.forEach(([startId, endId]) => {
+
+            const startInput =
+                document.getElementById(startId);
+
+            const endInput =
+                document.getElementById(endId);
+
+
+            if (startInput) {
+                startInput.value = startDate;
+            }
+
+
+            if (endInput) {
+                endInput.value = endDate;
+            }
+
+        });
+
+    }
+
+
+
+    /* ========================================================
+       فعال کردن تقویم جلالی
+       ======================================================== */
+
+    function initializeDatepickers() {
+
+        const dateInputs = [
+
+            'petty_cash_start_date',
+            'petty_cash_end_date',
+
+            'daily_worker_start_date',
+            'daily_worker_end_date',
+
+            'facilities_start_date',
+            'facilities_end_date'
+
+        ];
+
+
+        dateInputs.forEach(id => {
+
+            const input =
+                document.getElementById(id);
+
+
+            if (
+                input &&
+                typeof kamaDatepicker === 'function'
+            ) {
+
+                kamaDatepicker(id, {
+
+                    forceSelected: true,
+
+                    buttonsColor: 'blue',
+
+                    forceFarsiDigits: true,
+
+                    markToday: true,
+
+                    markHolidays: true,
+
+                    gotoToday: true,
+
+                    closeAfterSelect: true
+
+                });
+
+            }
+
+        });
+
+    }
+
+
+
+    /* ========================================================
+       ابزار نمایش خطا
+       ======================================================== */
+
+    function showError(target, message) {
+
+        if (!target) return;
+
+        target.innerHTML =
+            `<p class="text-center text-red-500">
+                ${message}
+            </p>`;
+
+    }
+
+
+
+    /* ========================================================
+       دریافت بازه تاریخ
+       ======================================================== */
+
+    function getDateRange(
+        startId,
+        endId,
+        target
+    ) {
+
+        const startInput =
+            document.getElementById(startId);
+
+        const endInput =
+            document.getElementById(endId);
+
+
+        if (!startInput || !endInput) {
+            return null;
+        }
+
+
+        const start =
+            toEnglishDigits(startInput.value);
+
+        const end =
+            toEnglishDigits(endInput.value);
+
+
+        if (!start || !end) {
+
+            showError(
+                target,
+                'لطفاً هر دو تاریخ شروع و پایان را انتخاب کنید.'
+            );
+
+            return null;
+
+        }
+
+
+        if (end < start) {
+
+            showError(
+                target,
+                'تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.'
+            );
+
+            return null;
+
+        }
+
+
+        return new URLSearchParams({
+
+            start_date: start,
+
+            end_date: end
+
+        });
+
+    }
+
+
+
+    /* ========================================================
+       نمودار تنخواه
+       ======================================================== */
+
+    let pettyCashChart = null;
+
+
+    async function fetchPettyCashChartData() {
+
+        const target =
+            document.getElementById(
+                'petty_cash_chart_container'
+            );
+
+
+        if (!target) return;
+
+
+        const params =
+            getDateRange(
+                'petty_cash_start_date',
+                'petty_cash_end_date',
+                target
+            );
+
+
+        if (!params) return;
+
+
+        target.innerHTML =
+            `<p class="text-indigo-500 text-center">
+                در حال دریافت اطلاعات...
+             </p>`;
+
+
+        try {
+
+            const response =
+                await fetch(
+                    `/api/petty_cash_by_date_range?${params.toString()}`
+                );
+
+
+            if (!response.ok) {
+                throw new Error(
+                    'Network response was not ok'
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (
+                !data.labels ||
+                !data.labels.length
+            ) {
+
+                target.innerHTML =
+                    `<p class="text-center text-gray-500">
+                        داده‌ای یافت نشد.
+                     </p>`;
+
+                return;
+
+            }
+
+
+            if (pettyCashChart) {
+                pettyCashChart.destroy();
+            }
+
+
+            target.innerHTML =
+                '<canvas id="pettyCashChart"></canvas>';
+
+
+            const canvas =
+                document.getElementById(
+                    'pettyCashChart'
+                );
+
+
+            pettyCashChart =
+                new Chart(canvas, {
+
+                    type: 'bar',
+
+                    data: {
+
+                        labels: data.labels,
+
+                        datasets: [{
+
+                            label:
+                                'مبلغ هزینه (ریال)',
+
+                            data:
+                                data.amounts,
+
+                            backgroundColor:
+                                'rgba(79,70,229,.7)'
+
+                        }]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: false
+
+                    }
+
+                });
+
+        }
+
+        catch (err) {
+
+            console.error(
+                'Petty cash error:',
+                err
+            );
+
+            showError(
+                target,
+                'خطا در دریافت اطلاعات تنخواه.'
+            );
+
+        }
+
+    }
+
+
+
+    /* ========================================================
+       ساخت جدول گزارش
+       ======================================================== */
+
+    function renderTable(
+        target,
+        headers,
+        rows
+    ) {
+
+        if (!target) return;
+
+
+        if (!rows.length) {
+
+            target.innerHTML =
+                `<p class="text-center text-gray-500">
+                    داده‌ای یافت نشد.
+                 </p>`;
+
+            return;
+
+        }
+
+
+        target.innerHTML = `
+
+            <table class="min-w-full text-sm">
+
+                <thead class="bg-gray-50">
+
+                    <tr>
+
+                        ${headers.map(
+                            header =>
+                            `<th class="p-2 text-right">
+                                ${header}
+                             </th>`
+                        ).join('')}
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                    ${rows.join('')}
+
+                </tbody>
+
+            </table>
+
+        `;
+
+    }
+
+
+
+    /* ========================================================
+       گزارش‌های روزمزد و تأسیسات
+       ======================================================== */
+
+    async function fetchReport(
+        startId,
+        endId,
+        targetId,
+        endpoint,
+        headers,
+        fields
+    ) {
+
+        const target =
+            document.getElementById(targetId);
+
+
+        if (!target) return;
+
+
+        const params =
+            getDateRange(
+                startId,
+                endId,
+                target
+            );
+
+
+        if (!params) return;
+
+
+        target.innerHTML =
+            `<p class="text-indigo-500 text-center">
+                در حال دریافت اطلاعات...
+             </p>`;
+
+
+        try {
+
+            const response =
+                await fetch(
+                    `${endpoint}?${params.toString()}`
+                );
+
+
+            if (!response.ok) {
+                throw new Error(
+                    'Network response was not ok'
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            const records =
+                data.records || [];
+
+
+            const rows =
+                records.map(record => {
+
+                    return `
+
+                        <tr class="border-t">
+
+                            ${fields.map(field => `
+
+                                <td class="p-2">
+                                    ${record[field] ?? '---'}
+                                </td>
+
+                            `).join('')}
+
+                        </tr>
+
+                    `;
+
+                });
+
+
+            renderTable(
+                target,
+                headers,
+                rows
+            );
+
+        }
+
+        catch (err) {
+
+            console.error(
+                'Report error:',
+                err
+            );
+
+            showError(
+                target,
+                'خطا در دریافت اطلاعات.'
+            );
+
+        }
+
+    }
+
+
+
+    /* ========================================================
+       تنظیم تاریخ‌ها
+       ======================================================== */
+
+    setInitialDates();
+
+
+
+    /* ========================================================
+       فعال کردن Datepicker و سپس نمایش خودکار اطلاعات
+
+       نکته مهم:
+       ابتدا تاریخ‌ها مقداردهی می‌شوند،
+       سپس Datepicker ساخته می‌شود،
+       سپس گزارش‌ها اجرا می‌شوند.
+       ======================================================== */
+
+    setTimeout(() => {
+
+        initializeDatepickers();
+
+
+        // نمایش خودکار نمودار تنخواه
+        fetchPettyCashChartData();
+
+
+        // نمایش خودکار گزارش روزمزد
+        fetchReport(
+
+            'daily_worker_start_date',
+
+            'daily_worker_end_date',
+
+            'daily_worker_report_container',
+
+            '/api/daily_workers_by_date_range',
+
+            [
+                'تاریخ',
+                'سرپرست',
+                'تعداد',
+                'محل فعالیت'
+            ],
+
+            [
+                'date',
+                'foreman_name',
+                'worker_count',
+                'location'
+            ]
+
+        );
+
+
+        // نمایش خودکار گزارش تأسیسات
+        fetchReport(
+
+            'facilities_start_date',
+
+            'facilities_end_date',
+
+            'facilities_report_container',
+
+            '/api/facilities_by_date_range',
+
+            [
+                'تاریخ',
+                'نام تأسیسات‌کار',
+                'نفر همراه',
+                'محل فعالیت'
+            ],
+
+            [
+                'date',
+                'facility_name',
+                'companion_name',
+                'activity_location'
+            ]
+
+        );
+
+    }, 100);
+
+
+
+    /* ========================================================
+       دکمه نمایش دستی تنخواه
+       ======================================================== */
+
+    const pettyButton =
+        document.getElementById(
+            'show_petty_cash_chart_btn'
+        );
+
+
+    if (pettyButton) {
+
+        pettyButton.addEventListener(
+            'click',
+            () => {
+
+                fetchPettyCashChartData();
+
+            }
+        );
+
+    }
+
+
+
+    /* ========================================================
+       دکمه نمایش دستی روزمزد
+       ======================================================== */
+
+    const dailyWorkerButton =
+        document.getElementById(
+            'show_daily_worker_report_btn'
+        );
+
+
+    if (dailyWorkerButton) {
+
+        dailyWorkerButton.addEventListener(
+            'click',
+            () => {
+
+                fetchReport(
+
+                    'daily_worker_start_date',
+
+                    'daily_worker_end_date',
+
+                    'daily_worker_report_container',
+
+                    '/api/daily_workers_by_date_range',
+
+                    [
+                        'تاریخ',
+                        'سرپرست',
+                        'تعداد',
+                        'محل فعالیت'
+                    ],
+
+                    [
+                        'date',
+                        'foreman_name',
+                        'worker_count',
+                        'location'
+                    ]
+
+                );
+
+            }
+        );
+
+    }
+
+
+
+    /* ========================================================
+       دکمه نمایش دستی تأسیسات
+       ======================================================== */
+
+    const facilitiesButton =
+        document.getElementById(
+            'show_facilities_report_btn'
+        );
+
+
+    if (facilitiesButton) {
+
+        facilitiesButton.addEventListener(
+            'click',
+            () => {
+
+                fetchReport(
+
+                    'facilities_start_date',
+
+                    'facilities_end_date',
+
+                    'facilities_report_container',
+
+                    '/api/facilities_by_date_range',
+
+                    [
+                        'تاریخ',
+                        'نام تأسیسات‌کار',
+                        'نفر همراه',
+                        'محل فعالیت'
+                    ],
+
+                    [
+                        'date',
+                        'facility_name',
+                        'companion_name',
+                        'activity_location'
+                    ]
+
+                );
+
+            }
+        );
+
+    }
+
+});
+
+</script>
+
+
+<script>
+(function () {
+
+    const donutCanvas =
+        document.getElementById(
+            'dashboardProjectProgressDonut'
+        );
+
+    const barCanvas =
+        document.getElementById(
+            'dashboardProjectProgressBar'
+        );
+
+
+    if (!donutCanvas || !barCanvas) {
+        return;
+    }
+
+
+    fetch('/api/project_progress_data')
+
+        .then(r => {
+
+            if (!r.ok) {
+                throw new Error(
+                    'HTTP error: ' + r.status
+                );
+            }
+
+            return r.json();
+
+        })
+
+        .then(data => {
+
+            const overall =
+                data.overall || {};
+
+
+            const progress =
+                Number(
+                    overall.progress || 0
+                );
+
+
+            const weight =
+                Number(
+                    overall.weight || 0
+                );
+
+
+            const items =
+                data.items || [];
+
+
+            const progressElement =
+                document.getElementById(
+                    'project-progress-value'
+                );
+
+
+            const weightElement =
+                document.getElementById(
+                    'project-weight-value'
+                );
+
+
+            const itemsElement =
+                document.getElementById(
+                    'project-wbs-items'
+                );
+
+
+            const activeItemsElement =
+                document.getElementById(
+                    'project-active-items'
+                );
+
+
+            if (progressElement) {
+
+                progressElement.textContent =
+                    progress.toFixed(2) + '٪';
+
+            }
+
+
+            if (weightElement) {
+
+                weightElement.textContent =
+                    weight.toFixed(2) + '٪';
+
+            }
+
+
+            if (itemsElement) {
+
+                itemsElement.textContent =
+                    items.length;
+
+            }
+
+
+            if (activeItemsElement) {
+
+                activeItemsElement.textContent =
+                    items.filter(
+                        x =>
+                        Number(
+                            x.coverage_percent || 0
+                        ) > 0
+                    ).length;
+
+            }
+
+
+            /*
+             * نمودار دایره‌ای پیشرفت کل
+             */
+
+            new Chart(
+                donutCanvas,
+                {
+
+                    type: 'doughnut',
+
+                    data: {
+
+                        labels: [
+                            'انجام شده',
+                            'باقیمانده'
+                        ],
+
+                        datasets: [
+
+                            {
+
+                                data: [
+
+                                    progress,
+
+                                    Math.max(
+                                        0,
+                                        100 - progress
+                                    )
+
+                                ],
+                                backgroundColor: [
+                                    '#2196F3',
+                                    '#BBDEFB'
+                                ]
+
+                            }
+
+                        ]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: false,
+
+                        plugins: {
+
+                            legend: {
+
+                                position: 'bottom'
+
+                            }
+
+                        }
+
+                    }
+
+                }
+            );
+
+
+            /*
+             * نمودار گروه‌های اصلی WBS
+             */
+
+            const groups =
+                data.groups || [];
+
+
+            new Chart(
+                barCanvas,
+                {
+
+                    type: 'bar',
+
+                    data: {
+
+                        labels:
+                            groups.map(
+                                g =>
+                                g.code + ' ' + g.name
+                            ),
+
+                        datasets: [
+
+                            {
+
+                                label:
+                                    'پیشرفت وزنی (%)',
+
+                                data:
+                                    groups.map(
+                                        g =>
+                                        Number(
+                                            g.weighted_progress || 0
+                                        )
+                                    ),
+                                backgroundColor: '#2196F3',
+                                borderColor: '#1976D2',
+                                borderWidth: 1
+
+                            }
+
+                        ]
+
+                    },
+
+                    options: {
+
+                        responsive: true,
+
+                        maintainAspectRatio: false,
+
+                        scales: {
+
+                            y: {
+
+                                beginAtZero: true,
+
+                                max: 100
+
+                            }
+
+                        },
+
+                        plugins: {
+
+                            legend: {
+
+                                display: false
+
+                            }
+
+                        }
+
+                    }
+
+                }
+            );
+
+        })
+
+        .catch(err => {
+
+            console.error(
+                'Project progress dashboard error:',
+                err
+            );
+
+        });
+
+})();
+
+</script>
+
+
+{% endblock %}

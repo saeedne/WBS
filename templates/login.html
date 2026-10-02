@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+
+{% block title %}ورود{% endblock %}
+
+{% block head_extra %}
+<style>
+    .password-container {
+        position: relative;
+    }
+    .toggle-password {
+        position: absolute;
+        top: 50%;
+        left: 1rem;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #718096;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="text-center mb-8">
+    <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 mb-2">ورود به سیستم</h1>
+    <p class="text-gray-500">لطفاً نام کاربری و رمز عبور خود را وارد کنید.</p>
+</header>
+
+<form action="/login" method="post" class="space-y-4">
+    <div>
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">نام کاربری:</label>
+        <input type="text" id="username" name="username" required
+               class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+    </div>
+    <div class="password-container">
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">رمز عبور:</label>
+        <input type="password" id="password" name="password" required
+               class="w-full p-3 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+        <span class="toggle-password" id="togglePassword">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.577 3.01 9.964 7.822a1.012 1.012 0 010 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.577-3.01-9.964-7.822z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </span>
+    </div>
+    <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+        ورود
+    </button>
+</form>
+
+<script>
+    const togglePassword = document.querySelector('#togglePassword');
+    const passwordInput = document.querySelector('#password');
+
+    togglePassword.addEventListener('click', function (e) {
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+        this.classList.toggle('text-indigo-600');
+    });
+</script>
+{% endblock %}

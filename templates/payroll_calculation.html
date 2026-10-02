@@ -1,0 +1,356 @@
+{% extends "layout.html" %}
+
+{% block title %}محاسبه حقوق{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0,0,0);
+        background-color: rgba(0,0,0,0.4);
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-content {
+        background-color: #fefefe;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 90%;
+        max-width: 600px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        position: relative;
+    }
+    .close-button {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+    }
+    .close-button:hover,
+    .close-button:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .edit-form-row {
+        background-color: #e2e8f0;
+    }
+    .sticky-footer {
+        position: sticky;
+        bottom: 0;
+        background-color: #f9fafb;
+        border-top: 2px solid #e5e7eb;
+        font-weight: bold;
+    }
+    .rotate-icon {
+        transition: transform 0.3s ease;
+    }
+    .rotate-icon.rotated {
+        transform: rotate(180deg);
+    }
+    /* Colors for different days */
+    .friday-holiday {
+        background-color: #FFC7CE;
+        color: #9C0006;
+    }
+    .holiday-day {
+        background-color: #ffcc99; /* Orange */
+    }
+    .no-log-day {
+        background-color: #B4C6E7;
+    }
+    .leave-day {
+        background-color: #ffefc7;
+    }
+    .rest-day {
+        background-color: #f9f8e8;
+    }
+    .compensable-day {
+        background-color: #d9ead3; /* Light green for compensable days */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">محاسبه حقوق کارکنان</h1>
+    <p class="text-gray-500 text-sm">محاسبه حقوق و دستمزد کارکنان بر اساس ساعات کاری.</p>
+</header>
+
+<section>
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <form id="payroll-form" action="/calculate_payroll" method="get" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+                <div>
+                    <label for="employee_id_filter" class="block text-sm font-medium text-gray-700 mb-1">نام کارمند:</label>
+                    <select id="employee_id_filter" name="employee_id" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                        <option value="all" {% if selected_employee_id == 'all' or selected_employee_id == none %}selected{% endif %}>همه کارکنان</option>
+                        {% for employee in employees %}
+                        <option value="{{ employee.employee_id }}" {% if selected_employee_id == employee.employee_id %}selected{% endif %}>{{ employee.name }} ({{ employee.employee_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="start_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ شروع:</label>
+                    <input type="text" id="start_date_filter" name="start_date" value="{{ start_date if start_date else '' }}" placeholder="1404/01/01" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm" data-jdp>
+                </div>
+                <div>
+                    <label for="end_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ پایان:</label>
+                    <input type="text" id="end_date_filter" name="end_date" value="{{ end_date if end_date else '' }}" placeholder="1404/12/29" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm" data-jdp>
+                </div>
+            </div>
+            <div class="mt-4">
+                 <label for="holidays" class="block text-sm font-medium text-gray-700 mb-1">روزهای تعطیل رسمی (با کاما جدا کنید):</label>
+                 <input type="text" id="holidays" name="holidays" value="{{ holidays_input if holidays_input else '' }}" placeholder="1404/01/02, 1404/01/03" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+            </div>
+            <div class="flex justify-end space-x-3 space-x-reverse mt-4">
+                <button type="submit" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300 text-sm">
+                    محاسبه حقوق
+                </button>
+                 <a href="#" id="export-excel-btn" class="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 flex items-center text-sm">
+                    خروجی اکسل
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+        <div class="overflow-x-auto max-h-96">
+            <table class="min-w-full">
+                <thead class="bg-gray-50 sticky top-0">
+                    <tr>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider" colspan="4">گزارش کارکرد</th>
+                    </tr>
+                </thead>
+                <tbody id="payrollTableBody" class="bg-white divide-y divide-gray-200">
+                    {% for result in payroll_results %}
+                    <tr class="report-item bg-gray-100 cursor-pointer" onclick="toggleDetails(this)">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">{{ result.name }} ({{ result.employee_id }})</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">روزهای کارکرد: <span class="font-bold text-gray-800">{{ result.total_working_days }}</span></td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">حقوق: <span class="font-bold text-green-600">{{ "{:,.0f}".format(result.salary_amount) }} ریال</span></td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                            <svg class="h-5 w-5 text-gray-500 inline rotate-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </td>
+                    </tr>
+                    <tr class="details-row hidden">
+                        <td colspan="4" class="p-4 bg-white">
+                            <table class="min-w-full text-xs">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">تاریخ</th>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">روز هفته</th>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">جزئیات ورود/خروج</th>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">ساعات کارکرد روزانه</th>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">شیفت شب (معادل نوبت)</th>
+                                        <th class="px-4 py-2 text-right font-medium text-gray-500">مجموع اضافه‌کاری و کسری کار</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200">
+                                    {% for date, summary in result.daily_summary.items() %}
+                                    <tr class="
+                                        {% if summary.is_rest %}
+                                            rest-day
+                                        {% elif summary.is_compensable %}
+                                            compensable-day
+                                        {% elif summary.is_holiday %}
+                                            holiday-day
+                                        {% elif summary.is_friday %}
+                                            friday-holiday
+                                        {% elif summary.is_leave %}
+                                            leave-day
+                                        {% elif not summary.has_shifts %}
+                                            no-log-day
+                                        {% endif %}
+                                    ">
+                                        <td class="px-4 py-2 whitespace-nowrap">{{ date }}</td>
+                                        <td class="px-4 py-2 whitespace-nowrap">{{ get_day_of_week(date) }}</td>
+                                        <td class="px-4 py-2">
+                                            {% if summary.is_leave %}
+                                            <span class="font-bold text-gray-700">مرخصی</span>
+                                            {% elif summary.is_rest %}
+                                            <span class="font-bold text-gray-700">استراحت</span>
+                                            {% elif summary.is_compensable %}
+                                            <span class="font-bold text-green-700">روز جبرانی</span>
+                                            {% elif not summary.has_shifts %}
+                                            {% if summary.is_rest %}
+                                                <span class="font-bold text-gray-700">استراحت</span>
+                                            {% else %}
+                                                <span class="text-gray-400">بدون لاگ</span>
+                                            {% endif %}
+                                            {% else %}
+                                            {% for shift in summary.shifts %}
+                                            <span class="font-semibold text-green-600">ورود:</span> {{ shift.entry_time_str }} <span class="font-semibold text-red-600">خروج:</span> {{ shift.exit_time_str }} ({{ (shift.duration.total_seconds() // 3600) | int }}h {{ ((shift.duration.total_seconds() % 3600) // 60) | int }}m)<br>
+                                            {% endfor %}
+                                            {% endif %}
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap">
+                                            {% if summary.has_shifts %}
+                                            {{ summary.total_working_hours.total_seconds() // 3600 }} ساعت و {{ (summary.total_working_hours.total_seconds() % 3600) // 60 }} دقیقه
+                                            {% else %}
+                                            <span class="text-gray-400">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap">
+                                            {% set night_shift_hours = summary.total_night_shift.total_seconds() / 3600 %}
+                                            {% if night_shift_hours > 0 %}
+                                                <span class="text-blue-600">{{ (night_shift_hours / 8) | round(2) }} شیفت</span>
+                                            {% else %}
+                                                <span class="text-gray-400">-</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap">
+                                            {% if summary.has_shifts %}
+                                            {% set overtime_undertime_seconds = summary.overtime_undertime.total_seconds() %}
+                                            {% if overtime_undertime_seconds >= 0 %}
+                                                <span class="text-green-600">+{{ overtime_undertime_seconds // 3600 }} ساعت و {{ (overtime_undertime_seconds % 3600) // 60 }} دقیقه</span>
+                                            {% else %}
+                                                <span class="text-red-600">-{{ -overtime_undertime_seconds // 3600 }} ساعت و {{ (-overtime_undertime_seconds % 3600) // 60 }} دقیقه</span>
+                                            {% endif %}
+                                            {% else %}
+                                            <span class="text-gray-400">-</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-6 py-4 text-center text-gray-400">برای این بازه زمانی اطلاعاتی یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if payroll_results %}
+                <tfoot class="sticky-footer">
+                    <tr class="bg-gray-200">
+                        <td colspan="4" class="p-4 text-right text-gray-700 font-bold">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                                
+                                <p>مجموع روزکارکرد: <span class="text-gray-900">{{ total_payroll_summary.total_working_days }} روز</span></p>
+                                <p>تعداد روزهای تعطیل محاسبه شده: <span class="text-gray-900">{{ total_payroll_summary.total_compensable_days }} روز</span></p>
+
+                                <p>کل روز کارکرد (پایه مرخصی): <span class="text-gray-900">{{ total_payroll_summary.total_working_days_base }} روز</span></p>
+                                <p>کل روز کارکرد (با مرخصی): <span class="text-gray-900">{{ total_payroll_summary.total_working_days_with_leave | round(2) }} روز</span></p>
+
+                                <p>ذخیره مرخصی: <span class="text-gray-900">{{ "{:,.2f}".format(total_payroll_summary.leave_bank) }} روز</span></p>
+                                <p>مجموع مرخصی‌ها: <span class="text-gray-900">{{ total_payroll_summary.total_leave_days }} روز</span></p>
+
+                                
+                                <p>شیفت شب: <span class="text-gray-900">{{ total_payroll_summary.total_night_shift_shifts | round(2) }} شیفت</span></p>
+                                
+                                {% set total_overtime_undertime_seconds = total_payroll_summary.total_overtime_undertime.total_seconds() %}
+                                <p>اضافه/کسری کار: 
+                                    {% if total_overtime_undertime_seconds >= 0 %}
+                                    <span class="text-green-600">+{{ total_overtime_undertime_seconds // 3600 }}h {{ (total_overtime_undertime_seconds % 3600) // 60 }}m</span>
+                                    {% else %}
+                                    <span class="text-red-600">-{{ -total_overtime_undertime_seconds // 3600 }}h {{ (-total_overtime_undertime_seconds % 3600) // 60 }}m</span>
+                                    {% endif %}
+                                </p>
+                                
+                                <p>جمعه کاری: <span class="text-gray-900">{{ total_payroll_summary.total_friday_logs }} روز</span></p>
+                                <p>تعطیلات رسمی: <span class="text-gray-900">{{ total_payroll_summary.total_holiday_logs }} روز</span></p>
+
+                                <p class="lg:col-span-4 text-lg font-extrabold text-indigo-700 text-center sm:text-right">
+                                    حقوق کل: {{ "{:,.0f}".format(total_payroll_summary.total_salary_amount) }} ریال
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Modal for messages instead of alert() -->
+<div id="alertModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <p id="modalMessage" class="text-gray-700 text-lg"></p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+<script src="/static/kamadatepicker.min.js"></script>
+<script>
+    function toggleDetails(row) {
+        const detailsRow = row.nextElementSibling;
+        const icon = row.querySelector('.rotate-icon');
+        
+        detailsRow.classList.toggle('hidden');
+        icon.classList.toggle('rotated');
+    }
+
+    function showAlertModal(message) {
+        const modal = document.getElementById('alertModal');
+        const modalMessage = document.getElementById('modalMessage');
+        const closeButton = document.querySelector('.close-button');
+
+        modalMessage.textContent = message;
+        modal.style.display = 'flex';
+
+        closeButton.onclick = function() {
+            modal.style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+    }
+
+    $(document).ready(function() {
+        kamaDatepicker('start_date_filter', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        kamaDatepicker('end_date_filter', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        
+        $('#export-excel-btn').on('click', function(e) {
+            e.preventDefault();
+            const employeeId = $('#employee_id_filter').val();
+            const startDate = $('#start_date_filter').val();
+            const endDate = $('#end_date_filter').val();
+            const holidays = $('#holidays').val(); // Get holidays input value
+            
+            if (startDate && endDate) {
+                const url = `/export/payroll_calculation?employee_id=${employeeId}&start_date=${startDate}&end_date=${endDate}&holidays=${holidays}`; // Pass holidays in URL
+                window.location.href = url;
+            } else {
+                showAlertModal('لطفاً تاریخ شروع و پایان را انتخاب کنید.');
+            }
+        });
+    });
+</script>
+{% endblock %}

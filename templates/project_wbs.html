@@ -1,0 +1,2417 @@
+{% extends "layout.html" %}
+
+{% block title %}ساختار شکست پروژه{% endblock %}
+
+
+{% block head_extra %}
+
+<style>
+
+    .wbs-table input {
+        min-width: 90px;
+    }
+
+    .wbs-table th {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: white;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .wbs-parent-row {
+        background-color: #f3f4f6;
+    }
+
+    .wbs-parent-row td {
+        font-weight: 700;
+    }
+
+    .wbs-toggle {
+        cursor: pointer;
+        border: none;
+        background: transparent;
+    }
+
+    .wbs-checkbox {
+        width: 18px !important;
+        min-width: 18px !important;
+        height: 18px;
+        cursor: pointer;
+    }
+
+    .select-all-checkbox {
+        width: 18px !important;
+        min-width: 18px !important;
+        height: 18px;
+        cursor: pointer;
+        vertical-align: middle;
+    }
+
+    .wbs-row-dirty {
+        background-color: #fffbeb !important;
+    }
+
+    .delete-selected-btn {
+        white-space: nowrap;
+    }
+
+    /* فقط برای فیلدهای محاسباتی سرفصل */
+    .wbs-calculated-input {
+        background-color: #f3f4f6 !important;
+        color: #9ca3af !important;
+        cursor: not-allowed !important;
+    }
+    .wbs-calculated-select {
+    background-color: #f3f4f6 !important;
+    color: #9ca3af !important;
+    cursor: not-allowed !important;
+    pointer-events: none;
+    }
+
+</style>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+
+<header class="text-center mb-6">
+
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">
+        ساختار شکست پروژه
+    </h1>
+
+    <p class="text-gray-500 text-sm">
+        مدیریت WBS پروژه بر مبنای جدول استاندارد پیشرفت حجمی ساختمان.
+    </p>
+
+</header>
+
+
+
+<!-- =========================================================
+     افزودن دستی + ورود Excel
+     ========================================================= -->
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+
+    <!-- افزودن دستی -->
+
+    <section class="bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <h2 class="text-xl font-bold text-gray-800 mb-4">
+            افزودن دستی آیتم
+        </h2>
+
+
+        <form
+            action="/add_project_wbs"
+            method="post"
+            class="space-y-3"
+        >
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+
+                <div>
+
+                    <label class="block text-sm font-medium mb-1">
+                        کد WBS:
+                    </label>
+
+                    <input
+                        name="wbs_code"
+                        required
+                        placeholder="مثال: 3.1"
+                        class="w-full p-2 rounded-lg border"
+                    >
+
+                </div>
+
+
+
+                <div>
+
+                    <label class="block text-sm font-medium mb-1">
+                        واحد:
+                    </label>
+
+                    <select name="unit"
+                        class="form-control"
+                        style="width: 100%;">
+                    <option value="">بدون واحد</option>
+
+                    {% for unit in wbs_units %}
+                        <option value="{{ unit }}">{{ unit }}</option>
+                    {% endfor %}
+                    </select>
+
+                </div>
+
+
+
+                <div class="sm:col-span-2">
+
+                    <label class="block text-sm font-medium mb-1">
+                        شرح فعالیت:
+                    </label>
+
+                    <input
+                        name="activity"
+                        required
+                        class="w-full p-2 rounded-lg border"
+                    >
+
+                </div>
+
+
+
+                <div>
+
+                    <label class="block text-sm font-medium mb-1">
+                        مقدار کل:
+                    </label>
+
+                    <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        name="total_quantity"
+                        value="0"
+                        class="w-full p-2 rounded-lg border"
+                    >
+
+                </div>
+
+
+
+                <div>
+
+                    <label class="block text-sm font-medium mb-1">
+                        وزن فعالیت (%):
+                    </label>
+
+                    <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        name="weight_percent"
+                        required
+                        class="w-full p-2 rounded-lg border"
+                    >
+
+                </div>
+
+
+
+                <div class="sm:col-span-2">
+
+                    <label class="block text-sm font-medium mb-1">
+                        توضیحات:
+                    </label>
+
+                    <textarea
+                        name="notes"
+                        rows="2"
+                        class="w-full p-2 rounded-lg border"
+                    ></textarea>
+
+                </div>
+
+            </div>
+
+
+
+            <button
+                type="submit"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg"
+            >
+                افزودن آیتم
+            </button>
+
+        </form>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         ورود Excel
+         ===================================================== -->
+
+    <section class="bg-white p-6 rounded-lg shadow-2xl border border-gray-200">
+
+        <h2 class="text-xl font-bold text-gray-800 mb-4">
+            ورود از فایل Excel
+        </h2>
+
+
+
+        <form
+            action="/import_project_wbs"
+            method="post"
+            enctype="multipart/form-data"
+            class="space-y-4"
+        >
+
+            <p class="text-sm text-gray-600 leading-7">
+
+                فایل ساختار شکست پروژه را انتخاب کنید.
+                سیستم بر اساس «کد WBS» آیتم‌ها را اضافه یا به‌روزرسانی می‌کند
+                و پیشرفت ثبت‌شده از هزینه‌ها را پاک نمی‌کند.
+
+            </p>
+
+
+
+            <input
+                type="file"
+                name="wbs_file"
+                accept=".xlsx,.xlsm"
+                required
+                class="w-full p-2 rounded-lg border text-sm"
+            >
+
+
+
+            <button
+                type="submit"
+                class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg"
+            >
+                ورود / به‌روزرسانی ساختار
+            </button>
+
+        </form>
+
+
+
+        <!-- دانلود نمونه Excel -->
+
+        <a
+            href="{{ url_for('download_project_wbs_template') }}"
+            class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg mt-3"
+        >
+            دانلود فایل نمونه ساختار شکست
+        </a>
+
+
+        {% if records %}
+        <a
+            href="{{ url_for('download_project_wbs_current') }}"
+            class="block w-full text-center bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-lg mt-3"
+        >
+            خروجی اکسل WBS فعلی
+        </a>
+        {% endif %}
+
+
+
+        <div class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600 leading-6">
+
+            <strong>فرمت فایل:</strong>
+
+            <br>
+
+            سطح ۱:
+            <strong>1</strong>
+
+            <br>
+
+            سطح ۲:
+            <strong>1.1</strong>
+
+            <br>
+
+            سطح ۳:
+            <strong>1.1.1</strong>
+
+            <br><br>
+
+            ستون‌های اصلی مورد نیاز:
+
+            <strong>
+                کد WBS، شرح فعالیت، وزن فعالیت (%)
+            </strong>
+
+            <br>
+
+            واحد، مقدار کل و توضیحات نیز در صورت وجود وارد می‌شوند.
+
+        </div>
+
+    </section>
+
+</div>
+
+
+
+<!-- =========================================================
+     جدول WBS
+     ========================================================= -->
+
+<section class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+
+
+    <!-- عنوان جدول -->
+
+    <div class="p-4 flex flex-col sm:flex-row justify-between gap-3 items-center">
+
+        <h2 class="text-xl font-bold text-gray-800">
+            فهرست ساختار شکست
+        </h2>
+
+
+        <div class="flex flex-wrap items-center gap-3">
+
+            <div class="text-sm font-semibold">
+
+                مجموع وزن:
+
+                <span
+                    id="total-wbs-weight"
+                    class="text-indigo-600"
+                >
+                    {{ '{:,.4f}'.format(total_weight) }}٪
+                </span>
+
+            </div>
+
+
+            <!-- ذخیره گروهی -->
+
+            <button
+                type="submit"
+                form="bulk-save-form"
+                id="save-selected-btn"
+                class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+            >
+                ذخیره تغییرات
+            </button>
+
+
+            <!-- حذف گروهی -->
+
+            <button
+                type="submit"
+                form="bulk-delete-form"
+                id="delete-selected-btn"
+                class="delete-selected-btn bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-lg"
+            >
+                حذف انتخاب شده‌ها
+            </button>
+
+        </div>
+
+    </div>
+
+
+
+    <form id="bulk-save-form" action="/save_selected_project_wbs" method="post"></form>
+
+
+    <!-- =====================================================
+         فرم حذف گروهی
+         ===================================================== -->
+
+    <form
+        id="bulk-delete-form"
+        action="/delete_selected_project_wbs"
+        method="post"
+    >
+
+
+        <div class="overflow-x-auto max-h-[70vh]">
+
+            <table class="wbs-table min-w-full text-sm">
+
+
+                <!-- =================================================
+                     Header
+                     ================================================= -->
+
+                <thead class="bg-gray-100">
+
+                    <tr>
+
+
+                        <th class="p-2 text-right whitespace-nowrap">
+                            کد WBS
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            شرح فعالیت
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            واحد
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            مقدار کل
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            وزن (%)
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            پیشرفت (%)
+                        </th>
+
+
+                        <th class="p-2 text-right">
+                            پیشرفت وزنی (%)
+                        </th>
+
+
+                        <!-- عملیات + انتخاب همه -->
+
+                        <th class="px-2 py-3 text-center whitespace-nowrap">
+
+                            <span>
+                                عملیات
+                            </span>
+
+                            <input
+                                type="checkbox"
+                                id="select-all-wbs"
+                                class="select-all-checkbox mr-2"
+                                title="انتخاب / لغو انتخاب همه"
+                            >
+
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+
+
+                <!-- =================================================
+                     Body
+                     ================================================= -->
+
+                <tbody>
+
+
+                {% for r in records %}
+
+
+                    <tr
+                        class="border-t hover:bg-gray-50"
+                        data-wbs-row
+                        data-wbs-code="{{ r.wbs_code }}"
+                        data-record-id="{{ r.id }}"
+                    >
+
+
+                        <!-- =================================================
+                             WBS code
+                             ================================================= -->
+
+                        <td class="p-2 whitespace-nowrap">
+
+
+                            <div class="flex items-center gap-1">
+
+
+                                <!-- دکمه باز / بسته فقط با JavaScript
+                                     روی ردیف‌های سطح 1 اضافه می‌شود -->
+
+                                <span
+                                    class="wbs-toggle-container inline-flex"
+                                ></span>
+
+
+                                <input
+                                    name="wbs_code"
+                                    value="{{ r.wbs_code }}"
+                                    class="p-1 border rounded w-24"
+                                >
+
+                            </div>
+
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Activity
+                             ================================================= -->
+
+                        <td class="p-2">
+
+                            <input
+                                name="activity"
+                                value="{{ r.activity }}"
+                                class="p-1 border rounded min-w-[220px]"
+                            >
+
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Unit
+                             ================================================= -->
+
+                        <td class="p-2">
+                            <select
+                                name="unit"
+                                class="form-control"
+                            >
+                                <option value="">بدون واحد</option>
+
+                                {% for unit in wbs_units %}
+                                    <option
+                                        value="{{ unit }}"
+                                        {% if r.unit == unit %}selected{% endif %}
+                                    >
+                                        {{ unit }}
+                                    </option>
+                                {% endfor %}
+
+                                {% if r.unit and r.unit not in wbs_units %}
+                                    <option value="{{ r.unit }}" selected>
+                                        {{ r.unit }}
+                                    </option>
+                                {% endif %}
+                            </select>
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Quantity
+                             ================================================= -->
+
+                        <td class="p-2">
+
+                            <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                name="total_quantity"
+                                value="{{ r.total_quantity or 0 }}"
+                                class="p-1 border rounded w-28"
+                            >
+
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Weight
+                             ================================================= -->
+
+                        <td class="p-2">
+
+                            <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                name="weight_percent"
+                                value="{{ r.weight_percent or 0 }}"
+                                class="p-1 border rounded w-24"
+                            >
+
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Progress
+                             ================================================= -->
+
+                        <td
+                            class="p-2 text-center text-indigo-700 font-semibold"
+                            data-wbs-progress="{{ r.wbs_code }}"
+                        >
+                            —
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Weighted progress
+                             ================================================= -->
+
+                        <td
+                            class="p-2 text-center text-green-700 font-semibold"
+                            data-wbs-weighted="{{ r.wbs_code }}"
+                        >
+                            —
+                        </td>
+
+
+
+                        <!-- =================================================
+                             Operations
+                             ================================================= -->
+
+                        <td class="p-2 text-center whitespace-nowrap">
+
+                            <input
+                                type="checkbox"
+                                name="selected_ids"
+                                value="{{ r.id }}"
+                                class="wbs-checkbox mr-2 align-middle"
+                                title="انتخاب برای ذخیره یا حذف"
+                            >
+
+                        </td>
+
+                    </tr>
+
+
+                {% else %}
+
+
+                    <tr>
+
+                        <td
+                            colspan="8"
+                            class="p-6 text-center text-gray-400"
+                        >
+                            هنوز ساختار شکستی وارد نشده است.
+                            فایل Excel استاندارد را بارگذاری کنید.
+                        </td>
+
+                    </tr>
+
+
+                {% endfor %}
+
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </form>
+
+</section>
+
+
+
+{% endblock %}
+
+
+
+{% block scripts_extra %}
+
+<script>
+
+document.addEventListener('DOMContentLoaded', function () {
+
+
+    /* =========================================================
+       پیدا کردن tbody
+       ========================================================= */
+
+    const tbody =
+        document.querySelector('.wbs-table tbody');
+
+
+    if (!tbody) {
+
+        console.error('WBS tbody پیدا نشد.');
+
+        return;
+
+    }
+
+
+
+    /* =========================================================
+       تبدیل اعداد فارسی و عربی به انگلیسی
+       ========================================================= */
+
+    function normalizeDigits(value) {
+
+        return String(value || '')
+            .replace(/[۰-۹]/g, function (d) {
+
+                return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d);
+
+            })
+            .replace(/[٠-٩]/g, function (d) {
+
+                return '٠١٢٣٤٥٦٧٨٩'.indexOf(d);
+
+            })
+            .trim();
+
+    }
+
+
+
+    /* =========================================================
+       تبدیل مقدار عددی
+       ========================================================= */
+
+    function numberValue(value) {
+
+        let text = normalizeDigits(value);
+
+        text = text
+            .replace(/,/g, '')
+            .replace(/٬/g, '')
+            .replace(/٫/g, '.')
+            .replace(/\s/g, '');
+
+        const number = parseFloat(text);
+
+        return Number.isFinite(number)
+            ? number
+            : 0;
+
+    }
+
+
+
+    /* =========================================================
+       فرمت درصد
+       ========================================================= */
+
+    function formatPercent(value) {
+
+        if (!Number.isFinite(value)) {
+
+            value = 0;
+
+        }
+
+        return value.toFixed(2) + '٪';
+
+    }
+
+
+
+    /* =========================================================
+       گرفتن کد WBS یک ردیف
+       ========================================================= */
+
+    function getRowCode(row) {
+
+        const input =
+            row.querySelector(
+                'input[name="wbs_code"]'
+            );
+
+        if (!input) {
+
+            return '';
+
+        }
+
+        return normalizeDigits(
+            input.value
+        );
+
+    }
+
+
+
+    /* =========================================================
+       تمام ردیف‌های واقعی WBS
+       ========================================================= */
+
+    function getAllRows() {
+
+        return Array.from(
+            tbody.querySelectorAll(
+                'tr[data-wbs-row]'
+            )
+        );
+
+    }
+
+
+
+    /* =========================================================
+       پیدا کردن فرزندان مستقیم
+       ========================================================= */
+
+    function getDirectChildren(parentCode) {
+
+        const parentLevel =
+            parentCode.split('.').length;
+
+        const prefix =
+            parentCode + '.';
+
+
+        return getAllRows().filter(
+            function (row) {
+
+                const code =
+                    getRowCode(row);
+
+
+                if (!code.startsWith(prefix)) {
+
+                    return false;
+
+                }
+
+
+                const level =
+                    code.split('.').length;
+
+
+                return level ===
+                    parentLevel + 1;
+
+            }
+        );
+
+    }
+
+
+
+    /* =========================================================
+       پیدا کردن تمام زیرمجموعه‌ها
+       ========================================================= */
+
+    function getAllDescendants(parentCode) {
+
+        const prefix =
+            parentCode + '.';
+
+
+        return getAllRows().filter(
+            function (row) {
+
+                const code =
+                    getRowCode(row);
+
+                return code.startsWith(prefix);
+
+            }
+        );
+
+    }
+
+
+
+    /* =========================================================
+       پیدا کردن سلول پیشرفت
+       ========================================================= */
+
+    function getProgressCell(code) {
+
+        return document.querySelector(
+            '[data-wbs-progress="' +
+            CSS.escape(code) +
+            '"]'
+        );
+
+    }
+
+
+
+    /* =========================================================
+       پیدا کردن سلول پیشرفت وزنی
+       ========================================================= */
+
+    function getWeightedCell(code) {
+
+        return document.querySelector(
+            '[data-wbs-weighted="' +
+            CSS.escape(code) +
+            '"]'
+        );
+
+    }
+
+
+
+    /* =========================================================
+       اطلاعات ردیف‌های WBS
+       ========================================================= */
+
+    const rows =
+        getAllRows();
+
+
+    const wbsRows = [];
+
+
+    rows.forEach(
+        function (row) {
+
+            const input =
+                row.querySelector(
+                    'input[name="wbs_code"]'
+                );
+
+
+            if (!input) {
+
+                return;
+
+            }
+
+
+            const code =
+                normalizeDigits(
+                    input.value
+                );
+
+
+            if (!code) {
+
+                return;
+
+            }
+
+
+            const parts =
+                code.split('.');
+
+
+            wbsRows.push({
+
+                row: row,
+
+                code: code,
+
+                topCode: parts[0],
+
+                level: parts.length
+
+            });
+
+        }
+    );
+
+
+
+    /* =========================================================
+       مرتب کردن کدهای سطح اول
+       ========================================================= */
+
+    const topCodes = [];
+
+
+    wbsRows.forEach(
+        function (item) {
+
+            if (
+                !topCodes.includes(
+                    item.topCode
+                )
+            ) {
+
+                topCodes.push(
+                    item.topCode
+                );
+
+            }
+
+        }
+    );
+
+
+    topCodes.sort(
+        function (a, b) {
+
+            return Number(a) - Number(b);
+
+        }
+    );
+
+
+
+    /* =========================================================
+       ساخت ساختار درختی WBS
+       ========================================================= */
+
+    topCodes.forEach(
+        function (topCode) {
+
+
+            /*
+             * آیا ردیف واقعی سطح 1 در Excel وجود دارد؟
+             */
+
+            const existingParent =
+                wbsRows.find(
+                    function (item) {
+
+                        return (
+                            item.code ===
+                            topCode
+                        );
+
+                    }
+                );
+
+
+            let parentRow;
+
+
+
+            /* =====================================================
+               اگر سطح 1 واقعی وجود دارد
+               ===================================================== */
+
+            if (existingParent) {
+
+                parentRow =
+                    existingParent.row;
+
+
+                parentRow.classList.add(
+                    'wbs-parent-row'
+                );
+
+            }
+
+
+
+            /* =====================================================
+               اگر سطح 1 واقعی وجود ندارد
+               فقط fallback
+               ===================================================== */
+
+            else {
+
+                parentRow =
+                    document.createElement('tr');
+
+
+                parentRow.className =
+                    'wbs-parent-row border-t bg-gray-100 font-bold';
+
+
+                parentRow.dataset.wbsParent =
+                    topCode;
+
+
+                parentRow.innerHTML = `
+
+                    <td class="p-2 whitespace-nowrap">
+
+                        <div class="flex items-center gap-1">
+
+                            <span class="wbs-toggle-container"></span>
+
+                            <span class="font-bold">
+                                ${topCode}
+                            </span>
+
+                        </div>
+
+                    </td>
+
+
+                    <td colspan="6" class="p-3">
+
+                        <span class="font-bold text-gray-700">
+                            بخش ${topCode}
+                        </span>
+
+                    </td>
+
+
+                    <td class="p-2 text-center">
+
+                        <span class="text-gray-400 text-xs">
+                            —
+                        </span>
+
+                    </td>
+
+                `;
+
+            }
+
+
+
+            /* =====================================================
+               پیدا کردن فرزندان مستقیم
+               ===================================================== */
+
+            const children =
+                wbsRows.filter(
+                    function (item) {
+
+                        return (
+                            item.topCode ===
+                            topCode &&
+                            item.code !==
+                            topCode
+                        );
+
+                    }
+                );
+
+
+
+            /* =====================================================
+               در ابتدا فرزندان مخفی باشند
+               ===================================================== */
+
+            children.forEach(
+                function (child) {
+
+                    child.row.style.display =
+                        'none';
+
+                }
+            );
+
+
+
+            /* =====================================================
+               والد مصنوعی قبل از اولین فرزند
+               ===================================================== */
+
+            if (!existingParent) {
+
+                if (children.length > 0) {
+
+                    children[0]
+                        .row
+                        .parentNode
+                        .insertBefore(
+                            parentRow,
+                            children[0].row
+                        );
+
+                }
+
+                else {
+
+                    tbody.appendChild(
+                        parentRow
+                    );
+
+                }
+
+            }
+
+
+
+            /* =====================================================
+               دکمه + / -
+               ===================================================== */
+
+            const codeInput =
+                parentRow.querySelector(
+                    'input[name="wbs_code"]'
+                );
+
+
+            const codeCell =
+                codeInput
+                    ? codeInput.closest('td')
+                    : null;
+
+
+            if (codeCell) {
+
+                const toggle =
+                    document.createElement(
+                        'button'
+                    );
+
+
+                toggle.type =
+                    'button';
+
+
+                toggle.className =
+                    'wbs-toggle text-indigo-700 font-bold text-lg inline-flex items-center justify-center w-7 h-7 rounded hover:bg-indigo-50';
+
+
+                toggle.dataset.wbsToggle =
+                    topCode;
+
+
+                toggle.setAttribute(
+                    'aria-expanded',
+                    'false'
+                );
+
+
+                toggle.title =
+                    'باز / بسته کردن بخش';
+
+
+                toggle.innerHTML =
+                    '<span class="wbs-icon">+</span>';
+
+
+                const container =
+                    codeCell.querySelector(
+                        '.wbs-toggle-container'
+                    );
+
+
+                if (container) {
+
+                    container.appendChild(
+                        toggle
+                    );
+
+                }
+
+            }
+
+
+
+            /* =====================================================
+               دکمه برای والد مصنوعی
+               ===================================================== */
+
+            if (!existingParent) {
+
+                const container =
+                    parentRow.querySelector(
+                        '.wbs-toggle-container'
+                    );
+
+
+                if (container) {
+
+                    const toggle =
+                        document.createElement(
+                            'button'
+                        );
+
+
+                    toggle.type =
+                        'button';
+
+
+                    toggle.className =
+                        'wbs-toggle text-indigo-700 font-bold text-lg inline-flex items-center justify-center w-7 h-7 rounded hover:bg-indigo-50';
+
+
+                    toggle.dataset.wbsToggle =
+                        topCode;
+
+
+                    toggle.setAttribute(
+                        'aria-expanded',
+                        'false'
+                    );
+
+
+                    toggle.title =
+                        'باز / بسته کردن بخش';
+
+
+                    toggle.innerHTML =
+                        '<span class="wbs-icon">+</span>';
+
+
+                    container.appendChild(
+                        toggle
+                    );
+
+                }
+
+            }
+
+
+
+            /* =====================================================
+               اتصال دکمه باز / بسته
+               ===================================================== */
+
+            const toggleButton =
+                parentRow.querySelector(
+                    `[data-wbs-toggle="${topCode}"]`
+                );
+
+
+            if (toggleButton) {
+
+                toggleButton.addEventListener(
+                    'click',
+                    function () {
+
+
+                        const isOpen =
+                            toggleButton.getAttribute(
+                                'aria-expanded'
+                            ) === 'true';
+
+
+                        children.forEach(
+                            function (child) {
+
+                                child.row.style.display =
+                                    isOpen
+                                        ? 'none'
+                                        : '';
+
+                            }
+                        );
+
+
+                        toggleButton.setAttribute(
+                            'aria-expanded',
+                            isOpen
+                                ? 'false'
+                                : 'true'
+                        );
+
+
+                        const icon =
+                            toggleButton.querySelector(
+                                '.wbs-icon'
+                            );
+
+
+                        if (icon) {
+
+                            icon.textContent =
+                                isOpen
+                                    ? '+'
+                                    : '−';
+
+                        }
+
+                    }
+                );
+
+            }
+
+        }
+    );
+
+
+
+    /* =========================================================
+       مشخص کردن سرفصل‌ها
+       و خاکستری کردن واحد و مقدار کل
+       ========================================================= */
+
+    function prepareParentRows() {
+
+        getAllRows().forEach(
+            function (row) {
+
+                const code =
+                    getRowCode(row);
+
+
+                if (!code) {
+
+                    return;
+
+                }
+
+
+                const children =
+                    getDirectChildren(code);
+
+
+                if (children.length === 0) {
+
+                    return;
+
+                }
+
+
+                row.classList.add(
+                    'wbs-parent-row'
+                );
+
+
+                const unitInput =
+                    row.querySelector(
+                        'select[name="unit"]'
+                    );
+
+                const quantityInput =
+                    row.querySelector(
+                        'input[name="total_quantity"]'
+                    );
+
+
+                /*
+                 * readonly استفاده شده، نه disabled،
+                 * تا هنگام ذخیره مقدار از فرم حذف نشود.
+                 */
+
+                if (unitInput) {
+                    unitInput.value = '';
+                    unitInput.disabled = true;
+                    unitInput.classList.add(
+                        'wbs-calculated-select'
+                    );
+                }
+
+
+                if (quantityInput) {
+
+                    quantityInput.readOnly =
+                        true;
+
+                    quantityInput.classList.add(
+                        'wbs-calculated-input'
+                    );
+
+                }
+
+            }
+        );
+
+    }
+
+
+    prepareParentRows();
+
+
+
+    /* =========================================================
+       محاسبه سرفصل‌ها از پایین به بالا
+       ========================================================= */
+
+    function calculateParentValues() {
+
+
+        const allRows =
+            getAllRows();
+
+
+        /*
+         * ابتدا ردیف‌ها را بر اساس عمق مرتب می‌کنیم.
+         *
+         * عمیق‌ترین سطح اول محاسبه می‌شود.
+         */
+
+        allRows.sort(
+            function (a, b) {
+
+                const levelA =
+                    getRowCode(a)
+                        .split('.')
+                        .length;
+
+
+                const levelB =
+                    getRowCode(b)
+                        .split('.')
+                        .length;
+
+
+                return levelB - levelA;
+
+            }
+        );
+
+
+        allRows.forEach(
+            function (row) {
+
+
+                const code =
+                    getRowCode(row);
+
+
+                if (!code) {
+
+                    return;
+
+                }
+
+
+                const children =
+                    getDirectChildren(code);
+
+
+                /*
+                 * اگر فرزند مستقیم ندارد،
+                 * آیتم نهایی است و مقدار خودش را دارد.
+                 */
+
+                if (children.length === 0) {
+
+                    return;
+
+                }
+
+
+
+                /* =================================================
+                   مجموع وزن فرزندان
+                   ================================================= */
+
+                let totalWeight =
+                    0;
+
+
+
+                /* =================================================
+                   مجموع پیشرفت وزنی فرزندان
+                   ================================================= */
+
+                let totalWeightedProgress =
+                    0;
+
+
+
+                children.forEach(
+                    function (child) {
+
+
+                        /*
+                         * وزن فرزند
+                         */
+
+                        const weightInput =
+                            child.querySelector(
+                                'input[name="weight_percent"]'
+                            );
+
+
+                        const childWeight =
+                            weightInput
+                                ? numberValue(
+                                    weightInput.value
+                                )
+                                : 0;
+
+
+                        totalWeight +=
+                            childWeight;
+
+
+
+                        /*
+                         * پیشرفت وزنی فرزند
+                         */
+
+                        const childCode =
+                            getRowCode(child);
+
+
+                        const weightedCell =
+                            getWeightedCell(
+                                childCode
+                            );
+
+
+                        if (weightedCell) {
+
+                            totalWeightedProgress +=
+                                numberValue(
+                                    weightedCell.textContent
+                                );
+
+                        }
+
+                    }
+                );
+
+
+
+                /* =================================================
+                   وزن سرفصل
+                   ================================================= */
+
+                const parentWeightInput =
+                    row.querySelector(
+                        'input[name="weight_percent"]'
+                    );
+
+
+                if (parentWeightInput) {
+
+                    parentWeightInput.value =
+                        totalWeight.toFixed(4);
+
+
+                    parentWeightInput.readOnly =
+                        true;
+
+
+                    parentWeightInput.classList.add(
+                        'wbs-calculated-input'
+                    );
+
+                }
+
+
+
+                /* =================================================
+                   پیشرفت وزنی سرفصل
+                   ================================================= */
+
+                const parentWeightedCell =
+                    getWeightedCell(
+                        code
+                    );
+
+
+                if (parentWeightedCell) {
+
+                    parentWeightedCell.textContent =
+                        formatPercent(
+                            totalWeightedProgress
+                        );
+
+                }
+
+
+
+                /* =================================================
+                   پیشرفت درصدی سرفصل
+                   ================================================= */
+
+                let parentProgress =
+                    0;
+
+
+                if (totalWeight > 0) {
+
+                    parentProgress =
+                        (
+                            totalWeightedProgress /
+                            totalWeight
+                        ) * 100;
+
+                }
+
+
+                parentProgress =
+                    Math.min(
+                        100,
+                        Math.max(
+                            0,
+                            parentProgress
+                        )
+                    );
+
+
+                const parentProgressCell =
+                    getProgressCell(
+                        code
+                    );
+
+
+                if (parentProgressCell) {
+
+                    parentProgressCell.textContent =
+                        formatPercent(
+                            parentProgress
+                        );
+
+                }
+
+            }
+        );
+
+
+        /* =========================================================
+           مجموع وزن پروژه
+           فقط از آیتم‌های نهایی محاسبه می‌شود.
+           ========================================================= */
+
+        let projectWeight =
+            0;
+
+
+        getAllRows().forEach(
+            function (row) {
+
+                const code =
+                    getRowCode(row);
+
+
+                if (!code) {
+
+                    return;
+
+                }
+
+
+                const children =
+                    getDirectChildren(code);
+
+
+                /*
+                 * فقط Leafها در مجموع وزن پروژه محاسبه می‌شوند.
+                 */
+
+                if (children.length === 0) {
+
+                    const weightInput =
+                        row.querySelector(
+                            'input[name="weight_percent"]'
+                        );
+
+
+                    if (weightInput) {
+
+                        projectWeight +=
+                            numberValue(
+                                weightInput.value
+                            );
+
+                    }
+
+                }
+
+            }
+        );
+
+
+        const totalWeightElement =
+            document.getElementById(
+                'total-wbs-weight'
+            );
+
+
+        if (totalWeightElement) {
+
+            totalWeightElement.textContent =
+                projectWeight.toFixed(4) +
+                '٪';
+
+        }
+
+    }
+
+
+
+    /* =========================================================
+       انتخاب همه
+       ========================================================= */
+
+    const selectAll =
+        document.getElementById(
+            'select-all-wbs'
+        );
+
+
+    function getRealCheckboxes() {
+
+        return Array.from(
+            document.querySelectorAll(
+                '.wbs-checkbox[name="selected_ids"]'
+            )
+        );
+
+    }
+
+
+
+    function updateSelectAllState() {
+
+
+        if (!selectAll) {
+
+            return;
+
+        }
+
+
+        const checkboxes =
+            getRealCheckboxes();
+
+
+        const checked =
+            checkboxes.filter(
+                function (checkbox) {
+
+                    return checkbox.checked;
+
+                }
+            );
+
+
+        if (checkboxes.length === 0) {
+
+            selectAll.checked =
+                false;
+
+            selectAll.indeterminate =
+                false;
+
+            return;
+
+        }
+
+
+        selectAll.checked =
+            checked.length ===
+            checkboxes.length;
+
+
+        selectAll.indeterminate =
+            checked.length > 0 &&
+            checked.length <
+            checkboxes.length;
+
+    }
+
+
+
+    if (selectAll) {
+
+        selectAll.addEventListener(
+            'change',
+            function () {
+
+
+                const checked =
+                    selectAll.checked;
+
+
+                getRealCheckboxes()
+                    .forEach(
+                        function (checkbox) {
+
+                            checkbox.checked =
+                                checked;
+
+                        }
+                    );
+
+
+                selectAll.indeterminate =
+                    false;
+                updateBulkSaveState();
+
+            }
+        );
+
+    }
+
+
+
+    /* =========================================================
+       انتخاب سرفصل و تمام زیرمجموعه‌های آن
+       ========================================================= */
+
+    document.addEventListener(
+        'change',
+        function (event) {
+
+
+            if (
+                !event.target.classList.contains(
+                    'wbs-checkbox'
+                )
+            ) {
+
+                return;
+
+            }
+
+
+            const checkbox =
+                event.target;
+
+
+            if (
+                checkbox.name !==
+                'selected_ids'
+            ) {
+
+                return;
+
+            }
+
+
+            const row =
+                checkbox.closest(
+                    'tr[data-wbs-row]'
+                );
+
+
+            if (!row) {
+
+                return;
+
+            }
+
+
+            const code =
+                getRowCode(row);
+
+
+            if (!code) {
+
+                return;
+
+            }
+
+
+
+            /*
+             * اگر ردیف سرفصل باشد،
+             * همه زیرمجموعه‌ها انتخاب شوند.
+             */
+
+            const descendants =
+                getAllDescendants(
+                    code
+                );
+
+
+            if (descendants.length) {
+
+                descendants.forEach(
+                    function (childRow) {
+
+
+                        const childCheckbox =
+                            childRow.querySelector(
+                                'input.wbs-checkbox[name="selected_ids"]'
+                            );
+
+
+                        if (childCheckbox) {
+
+                            childCheckbox.checked =
+                                checkbox.checked;
+
+                        }
+
+                    }
+                );
+
+            }
+
+
+            updateSelectAllState();
+
+        }
+    );
+
+
+
+    /* =========================================================
+       اگر یک زیرمجموعه انتخاب شد، وضعیت والد
+       برای Select All فقط بر اساس همه رکوردها محاسبه شود.
+       ========================================================= */
+
+    getRealCheckboxes().forEach(
+        function (checkbox) {
+
+            checkbox.addEventListener(
+                'change',
+                updateSelectAllState
+            );
+
+        }
+    );
+
+
+
+    /* =========================================================
+       تشخیص تغییر ردیف و تیک خودکار
+       ========================================================= */
+
+    const saveSelectedButton =
+        document.getElementById('save-selected-btn');
+
+    function getRowCheckbox(row) {
+        return row.querySelector('input.wbs-checkbox[name="selected_ids"]');
+    }
+
+    function updateBulkSaveState() {
+        const selected = getRealCheckboxes().filter(function (checkbox) {
+            return checkbox.checked;
+        });
+        if (saveSelectedButton) {
+            saveSelectedButton.disabled = selected.length === 0;
+        }
+        getAllRows().forEach(function (row) {
+            const checkbox = getRowCheckbox(row);
+            if (checkbox && checkbox.checked) {
+                row.classList.add('wbs-row-dirty');
+            } else {
+                row.classList.remove('wbs-row-dirty');
+            }
+        });
+    }
+
+    getAllRows().forEach(function (row) {
+        const inputs = row.querySelectorAll(
+            'input[name="wbs_code"], input[name="activity"], select[name="unit"], ' +
+            'input[name="total_quantity"], input[name="weight_percent"]'
+        );
+
+        inputs.forEach(function (input) {
+            input.addEventListener('input', function () {
+                const checkbox = getRowCheckbox(row);
+                if (checkbox && !input.classList.contains('wbs-calculated-input') && !input.disabled) {
+                    checkbox.checked = true;
+                    row.classList.add('wbs-row-dirty');
+                    updateSelectAllState();
+                    updateBulkSaveState();
+                }
+            });
+            input.addEventListener('change', function () {
+                const checkbox = getRowCheckbox(row);
+                if (checkbox && !input.classList.contains('wbs-calculated-input') && !input.disabled) {
+                    checkbox.checked = true;
+                    row.classList.add('wbs-row-dirty');
+                    updateSelectAllState();
+                    updateBulkSaveState();
+                }
+            });
+        });
+    });
+
+    getRealCheckboxes().forEach(function (checkbox) {
+        checkbox.addEventListener('change', updateBulkSaveState);
+    });
+
+    if (saveSelectedButton) {
+        saveSelectedButton.addEventListener('click', function (event) {
+            event.preventDefault();
+
+            const selected = getRealCheckboxes().filter(function (checkbox) {
+                return checkbox.checked;
+            });
+
+            if (selected.length === 0) {
+                alert('حداقل یک ردیف را برای ذخیره انتخاب کنید.');
+                return;
+            }
+
+            const form = document.getElementById('bulk-save-form');
+            form.querySelectorAll('input[data-generated="1"]').forEach(function (el) {
+                el.remove();
+            });
+
+            selected.forEach(function (checkbox) {
+                const row = checkbox.closest('tr[data-wbs-row]');
+                if (!row) return;
+                const id = row.dataset.recordId;
+
+                const fields = [
+                    ['code', row.querySelector('input[name="wbs_code"]')],
+                    ['activity', row.querySelector('input[name="activity"]')],
+                    ['unit', row.querySelector('select[name="unit"]')],
+                    ['quantity', row.querySelector('input[name="total_quantity"]')],
+                    ['weight', row.querySelector('input[name="weight_percent"]')]
+                ];
+
+                const idInput = document.createElement('input');
+                idInput.type = 'hidden';
+                idInput.name = 'selected_ids';
+                idInput.value = id;
+                idInput.dataset.generated = '1';
+                form.appendChild(idInput);
+
+                fields.forEach(function (item) {
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'wbs_' + id + '_' + item[0];
+                    hidden.value = item[1] ? item[1].value : '';
+                    hidden.dataset.generated = '1';
+                    form.appendChild(hidden);
+                });
+            });
+
+            form.submit();
+        });
+    }
+
+    updateBulkSaveState();
+
+
+    /* =========================================================
+       تأیید حذف گروهی
+       ========================================================= */
+
+    const deleteForm =
+        document.getElementById(
+            'bulk-delete-form'
+        );
+
+
+    if (deleteForm) {
+
+        deleteForm.addEventListener(
+            'submit',
+            function (event) {
+
+
+                const selected =
+                    getRealCheckboxes()
+                        .filter(
+                            function (checkbox) {
+
+                                return checkbox.checked;
+
+                            }
+                        );
+
+
+                if (selected.length === 0) {
+
+
+                    event.preventDefault();
+
+
+                    alert(
+                        'حداقل یک آیتم را برای حذف انتخاب کنید.'
+                    );
+
+
+                    return;
+
+                }
+
+
+
+                const confirmed =
+                    confirm(
+                        'آیا از حذف ' +
+                        selected.length +
+                        ' آیتم انتخاب‌شده مطمئن هستید؟'
+                    );
+
+
+                if (!confirmed) {
+
+                    event.preventDefault();
+
+                }
+
+            }
+        );
+
+    }
+
+
+
+    /* =========================================================
+       دریافت و نمایش پیشرفت پروژه
+       ========================================================= */
+
+    fetch(
+        '/api/project_progress_data'
+    )
+
+    .then(
+        function (response) {
+
+            if (!response.ok) {
+
+                throw new Error(
+                    'HTTP ' +
+                    response.status
+                );
+
+            }
+
+            return response.json();
+
+        }
+    )
+
+    .then(
+        function (data) {
+
+
+            const items =
+                data.items || [];
+
+
+            items.forEach(
+                function (item) {
+
+
+                    const code =
+                        normalizeDigits(
+                            item.wbs_code
+                        );
+
+
+                    const allInputs =
+                        document.querySelectorAll(
+                            'input[name="wbs_code"]'
+                        );
+
+
+                    allInputs.forEach(
+                        function (input) {
+
+
+                            if (
+                                normalizeDigits(
+                                    input.value
+                                ) !== code
+                            ) {
+
+                                return;
+
+                            }
+
+
+                            const row =
+                                input.closest(
+                                    'tr'
+                                );
+
+
+                            if (!row) {
+
+                                return;
+
+                            }
+
+
+                            const progressCell =
+                                row.querySelector(
+                                    '[data-wbs-progress]'
+                                );
+
+
+                            const weightedCell =
+                                row.querySelector(
+                                    '[data-wbs-weighted]'
+                                );
+
+
+                            if (progressCell) {
+
+                                progressCell.textContent =
+                                    Number(
+                                        item.coverage_percent ||
+                                        0
+                                    ).toFixed(2) +
+                                    '٪';
+
+                            }
+
+
+                            if (weightedCell) {
+
+                                weightedCell.textContent =
+                                    Number(
+                                        item.weighted_progress ||
+                                        0
+                                    ).toFixed(2) +
+                                    '٪';
+
+                            }
+
+                        }
+                    );
+
+                }
+            );
+
+
+            /*
+             * بسیار مهم:
+             *
+             * بعد از دریافت پیشرفت آیتم‌ها،
+             * محاسبه سرفصل‌ها انجام می‌شود.
+             */
+
+            calculateParentValues();
+
+        }
+    )
+
+    .catch(
+        function (error) {
+
+            console.error(
+                'خطا در دریافت پیشرفت WBS:',
+                error
+            );
+
+
+            /*
+             * حتی اگر API خطا داشته باشد،
+             * وزن سرفصل‌ها محاسبه می‌شود.
+             */
+
+            calculateParentValues();
+
+        }
+    );
+
+
+
+    /* =========================================================
+       اجرای اولیه محاسبه
+       ========================================================= */
+
+    calculateParentValues();
+
+
+
+    /* =========================================================
+       اگر وزن یک آیتم نهایی تغییر کرد،
+       سرفصل‌ها مجدداً محاسبه شوند.
+       ========================================================= */
+
+    getAllRows().forEach(
+        function (row) {
+
+
+            const weightInput =
+                row.querySelector(
+                    'input[name="weight_percent"]'
+                );
+
+
+            if (!weightInput) {
+
+                return;
+
+            }
+
+
+            weightInput.addEventListener(
+                'input',
+                function () {
+
+                    setTimeout(
+                        calculateParentValues,
+                        0
+                    );
+
+                }
+            );
+
+
+            weightInput.addEventListener(
+                'change',
+                function () {
+
+                    setTimeout(
+                        calculateParentValues,
+                        0
+                    );
+
+                }
+            );
+
+        }
+    );
+
+});
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,420 @@
+{% extends "layout.html" %}
+
+{% block title %}مدیریت کارکنان{% endblock %}
+
+{% block head_extra %}
+<!-- jQuery CDN -->
+<script src="/static/jquery.min.js"></script>
+<style>
+    /* Custom styling for better visibility of numbers in Persian */
+    .rtl-number {
+        direction: rtl;
+        text-align: left;
+    }
+
+    /* Styling for the Modal (Hidden by default) */
+    .modal-overlay {
+        display: none; /* Hidden by default */
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 50;
+        overflow-y: auto; /* Allows scrolling if content is too large */
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-content {
+        background-color: #fff;
+        margin: 50px auto; /* Centered with a bit of top margin */
+        padding: 20px;
+        border-radius: 12px;
+        max-width: 90%;
+        width: 750px; /* Increased width to accommodate new fields */
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        position: relative;
+    }
+
+    /* Responsive adjustments for mobile */
+    @media (max-width: 768px) {
+        .modal-content {
+            margin: 20px auto;
+            max-width: 95%;
+        }
+    }
+    
+    /* Ensure table headers are wide enough */
+    .table-responsive {
+        overflow-x: auto;
+    }
+    /* Fixed width for the National Code column to align with other fields in the table */
+    .min-w-national-code {
+        min-width: 120px;
+    }
+
+    /* Ensure the table header stays visible when scrolling vertically */
+    .sticky-header th {
+        position: sticky;
+        top: 0;
+        background-color: #f9fafb; /* bg-gray-50 */
+        z-index: 10;
+        box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">مدیریت کارکنان</h1>
+    <p class="text-gray-500 text-sm">افزودن، ویرایش و حذف اطلاعات کارکنان.</p>
+</header>
+
+<!-- Employee Management Section -->
+<section>
+    <div class="flex justify-between items-center mb-4 flex-wrap">
+        <h2 class="text-2xl font-bold text-gray-800 my-2">لیست کارکنان</h2>
+        <!-- Employee Import/Export Buttons -->
+        <div class="flex space-x-2 space-x-reverse flex-wrap justify-end my-2">
+            
+            <a href="/export/employees" class="bg-gray-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-gray-700 transition duration-300 flex items-center space-x-2 space-x-reverse my-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414L9 3.586V13a1 1 0 112 0V3.586l2.707 2.707a1 1 0 11-1.414 1.414L10 5.414l-2.293 2.293a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+                <span>خروجی گرفتن (XLSX)</span>
+            </a>
+            <label for="import-file" class="bg-blue-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center space-x-2 space-x-reverse cursor-pointer my-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM5.293 6.707a1 1 0 011.414 0L10 10.586l3.293-3.879a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+                <span>ورود از فایل (CSV/XLSX)</span>
+                <!-- MODIFIED: Accept both .csv and .xlsx -->
+                <input type="file" id="import-file" class="hidden" accept=".csv, .xlsx" onchange="document.getElementById('import-form').submit();">
+            </label>
+            <form id="import-form" action="/import/employees" method="post" enctype="multipart/form-data" class="hidden">
+                <input type="file" name="file" id="hidden-import-file" accept=".csv, .xlsx">
+            </form>
+        </div>
+    </div>
+
+    <!-- Add New Employee Form -->
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <form action="/add_employee" method="post" class="space-y-4">
+            <!-- Row 1: ID, Name -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="newEmployeeId" class="block text-sm font-medium text-gray-700 mb-1">شماره پرسنلی جدید:</label>
+                    <input type="text" id="newEmployeeId" name="employeeId" placeholder="شماره پرسنلی" required
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300"
+                           value="{{ next_employee_id if next_employee_id else '' }}">
+                </div>
+                <div>
+                    <label for="newEmployeeName" class="block text-sm font-medium text-gray-700 mb-1">نام و نام خانوادگی:</label>
+                    <input type="text" id="newEmployeeName" name="name" placeholder="نام کارمند" required
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+
+            <!-- Row 2: National Code, Insurance, and Bank Account -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label for="national_code" class="block text-sm font-medium text-gray-700 mb-1">شماره ملی:</label>
+                    <input type="text" id="national_code" name="national_code" placeholder="شماره ملی (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="insurance_number" class="block text-sm font-medium text-gray-700 mb-1">شماره بیمه:</label>
+                    <input type="text" id="insurance_number" name="insurance_number" placeholder="شماره بیمه (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="bank_account_number" class="block text-sm font-medium text-gray-700 mb-1">شماره حساب:</label>
+                    <input type="text" id="bank_account_number" name="bank_account_number" placeholder="شماره حساب (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+            
+            <!-- Row 3: Marital, Children, Salary fields -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                    <label for="marital_status" class="block text-sm font-medium text-gray-700 mb-1">وضعیت تاهل:</label>
+                    <select id="marital_status" name="marital_status" class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                        <option value="مجرد">مجرد</option>
+                        <option value="متاهل">متاهل</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="children_count" class="block text-sm font-medium text-gray-700 mb-1">تعداد فرزند:</label>
+                    <input type="number" id="children_count" name="children_count" value="0" min="0" 
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="base_salary" class="block text-sm font-medium text-gray-700 mb-1">مبلغ حقوق پایه (ریال):</label>
+                    <input type="number" id="base_salary" name="base_salary" value="0" min="0" step="1"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="seniority_pay" class="block text-sm font-medium text-gray-700 mb-1">مبلغ پایه سنوات (ریال):</label>
+                    <input type="number" id="seniority_pay" name="seniority_pay" value="0" min="0" step="1"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+
+            <button type="submit" class="w-full bg-blue-600 text-white text-sm font-semibold py-2 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300">
+                افزودن کارمند جدید
+            </button>
+        </form>
+    </div>
+    
+    <!-- Employee Search Field -->
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <label for="employee-search" class="block text-sm font-medium text-gray-700 mb-1">جستجو در لیست کارکنان:</label>
+        <input type="text" id="employee-search" placeholder="جستجو بر اساس نام یا شماره پرسنلی" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+    </div>
+
+    <!-- Employee List Table - SCROLLABLE CONTAINER -->
+    <div class="bg-white rounded-lg overflow-hidden shadow-lg border border-gray-200 table-responsive max-h-96 overflow-y-auto">
+        <!-- max-h-96 sets a maximum height, overflow-y-auto adds vertical scroll when needed -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="sticky-header">
+                    <tr>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px]">شماره پرسنلی</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">نام</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[90px]">وضعیت تاهل</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[90px]">تعداد فرزند</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">حقوق پایه</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">پایه سنوات</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">شماره بیمه</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">شماره حساب</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-national-code">شماره ملی</th>
+                        <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px]">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="employeeTableBody" class="bg-white divide-y divide-gray-200">
+                    {% for employee in employees %}
+                    <tr class="employee-item transition duration-200 hover:bg-gray-100">
+                        <td class="px-3 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">{{ employee.employee_id }}</td>
+                        <td class="px-3 py-4 text-sm font-medium text-gray-900 whitespace-nowrap">{{ employee.name }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{{ employee.marital_status }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap rtl-number">{{ employee.children_count }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap rtl-number">{{ "{:,.0f}".format(employee.base_salary | float) }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap rtl-number">{{ "{:,.0f}".format(employee.seniority_pay | float) }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{{ employee.insurance_number }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{{ employee.bank_account_number }}</td>
+                        <td class="px-3 py-4 text-sm text-gray-500 whitespace-nowrap">{{ employee.national_code }}</td>
+                        <td class="px-3 py-4 text-sm font-medium whitespace-nowrap flex space-x-2 space-x-reverse">
+                            
+                            <!-- EDIT BUTTON -->
+                            <button type="button" 
+                                    class="text-green-600 hover:text-green-900 transition duration-300 font-bold"
+                                    onclick="openEditModal('{{ employee.employee_id }}')">
+                                ویرایش
+                            </button>
+
+                            <span class="text-gray-300">|</span>
+                            
+                            <!-- DELETE BUTTON -->
+                            <form action="/delete_employee" method="post" class="inline-block" onsubmit="return showConfirmationBox('آیا مطمئن هستید که می‌خواهید {{ employee.name }} را حذف کنید؟');">
+                                <input type="hidden" name="employeeId" value="{{ employee.employee_id }}">
+                                <button type="submit" class="text-red-600 hover:text-red-900 transition duration-300">
+                                    حذف
+                                </button>
+                            </form>
+                            
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- EDIT EMPLOYEE MODAL (Hidden by default) -->
+<div id="editEmployeeModal" class="modal-overlay">
+    <div class="modal-content">
+        <h2 class="text-xl font-bold text-gray-800 mb-6 border-b pb-2">ویرایش مشخصات کارمند</h2>
+        
+        <form id="editEmployeeForm" action="/edit_employee" method="post" class="space-y-4">
+            <!-- Hidden field for original ID to identify the record in DB -->
+            <input type="hidden" id="originalEmployeeId" name="originalEmployeeId">
+
+            <!-- Row 1: ID, Name -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="editEmployeeId" class="block text-sm font-medium text-gray-700 mb-1">شماره پرسنلی:</label>
+                    <!-- Employee ID can be changed, so it's editable. -->
+                    <input type="text" id="editEmployeeId" name="employeeId" required
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="editEmployeeName" class="block text-sm font-medium text-gray-700 mb-1">نام و نام خانوادگی:</label>
+                    <input type="text" id="editEmployeeName" name="name" required
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+
+            <!-- NEW Row 2: National Code, Insurance, and Bank Account -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label for="editNationalCode" class="block text-sm font-medium text-gray-700 mb-1">شماره ملی:</label>
+                    <input type="text" id="editNationalCode" name="national_code" placeholder="شماره ملی (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="editInsuranceNumber" class="block text-sm font-medium text-gray-700 mb-1">شماره بیمه:</label>
+                    <input type="text" id="editInsuranceNumber" name="insurance_number" placeholder="شماره بیمه (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="editBankAccountNumber" class="block text-sm font-medium text-gray-700 mb-1">شماره حساب:</label>
+                    <input type="text" id="editBankAccountNumber" name="bank_account_number" placeholder="شماره حساب (اختیاری)"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+            
+            <!-- Row 3: Marital, Children, Salary fields -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                    <label for="editMaritalStatus" class="block text-sm font-medium text-gray-700 mb-1">وضعیت تاهل:</label>
+                    <select id="editMaritalStatus" name="marital_status" class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                        <option value="مجرد">مجرد</option>
+                        <option value="متاهل">متاهل</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="editChildrenCount" class="block text-sm font-medium text-gray-700 mb-1">تعداد فرزند:</label>
+                    <input type="number" id="editChildrenCount" name="children_count" min="0" 
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="editBaseSalary" class="block text-sm font-medium text-gray-700 mb-1">مبلغ حقوق پایه (ریال):</label>
+                    <input type="number" id="editBaseSalary" name="base_salary" min="0" step="1"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+                <div>
+                    <label for="editSeniorityPay" class="block text-sm font-medium text-gray-700 mb-1">مبلغ پایه سنوات (ریال):</label>
+                    <input type="number" id="editSeniorityPay" name="seniority_pay" min="0" step="1"
+                           class="w-full p-2 rounded-lg border-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300">
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-4 space-x-reverse pt-4 border-t mt-4">
+                <button type="button" onclick="closeEditModal()" class="bg-gray-400 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-gray-500 transition duration-300">
+                    انصراف
+                </button>
+                <button type="submit" class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-green-700 transition duration-300">
+                    ذخیره تغییرات
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- END EDIT EMPLOYEE MODAL -->
+
+<!-- Custom Confirmation Modal (Placeholder - should be implemented in layout.html or similar) -->
+<div id="confirmationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-50 hidden">
+    <div class="bg-white p-6 rounded-lg shadow-xl text-center max-w-sm mx-auto">
+        <p class="text-gray-800 text-sm mb-4" id="confirmationMessage">آیا مطمئن هستید؟</p>
+        <div class="flex justify-center space-x-4 space-x-reverse">
+            <button id="confirmYes" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-red-700 transition duration-300">بله</button>
+            <button id="confirmNo" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-gray-500 transition duration-300">خیر</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    // Placeholder function for custom confirmation box
+    function showConfirmationBox(message) {
+        // Since we cannot use confirm() in this environment, we temporarily use the old one 
+        // until the full modal system is implemented globally, but we'll use a placeholder for now.
+        return confirm(message); 
+    }
+    
+    // --- MODAL FUNCTIONS ---
+    const modal = document.getElementById('editEmployeeModal');
+    const form = document.getElementById('editEmployeeForm');
+
+    function openEditModal(employeeId) {
+        // Show loading state or clear previous data if necessary
+        form.reset(); 
+        
+        // Fetch employee data
+        $.ajax({
+            url: '/get_employee_data/' + employeeId,
+            method: 'GET',
+            success: function(data) {
+                if (data.employee_id) {
+                    // Set both the original ID and the editable ID field
+                    $('#originalEmployeeId').val(data.employee_id);
+                    $('#editEmployeeId').val(data.employee_id);
+                    $('#editEmployeeName').val(data.name);
+                    $('#editMaritalStatus').val(data.marital_status);
+                    $('#editChildrenCount').val(data.children_count);
+                    $('#editBaseSalary').val(data.base_salary);
+                    $('#editSeniorityPay').val(data.seniority_pay);
+                    
+                    $('#editInsuranceNumber').val(data.insurance_number);
+                    $('#editBankAccountNumber').val(data.bank_account_number);
+                    $('#editNationalCode').val(data.national_code); // Set national code
+                    
+                    modal.style.display = 'flex'; // Show modal
+                } else {
+                    alert('خطا: مشخصات کارمند پیدا نشد.');
+                }
+            },
+            error: function() {
+                alert('خطا در دریافت اطلاعات کارمند از سرور.');
+            }
+        });
+    }
+
+    function closeEditModal() {
+        modal.style.display = 'none'; // Hide modal
+    }
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+        if (event.target == modal) {
+            closeEditModal();
+        }
+    }
+    // --- END MODAL FUNCTIONS ---
+
+
+    document.getElementById('import-file').addEventListener('change', function() {
+        if (this.files.length > 0) {
+            // This is the file name to display to the user
+            console.log('File selected for import: ' + this.files[0].name);
+            
+            // Submitting the form will handle the import
+            document.getElementById('hidden-import-file').files = this.files;
+            document.getElementById('import-form').submit();
+        }
+    });
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const employeeSearchInput = document.getElementById('employee-search');
+        const allEmployees = Array.from(document.querySelectorAll('.employee-item'));
+
+        // Filter functionality for employees
+        employeeSearchInput.addEventListener('keyup', (event) => {
+            const searchTerm = event.target.value.toLowerCase();
+            allEmployees.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    item.style.display = 'table-row';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

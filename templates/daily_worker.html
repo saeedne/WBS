@@ -1,0 +1,360 @@
+{% extends "layout.html" %}
+
+{% block title %}ثبت کارکنان فعال{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+<script src="https://cdn.jsdelivr.net/npm/browser-image-compression@2.0.0/dist/browser-image-compression.js"></script>
+<style>
+    /* Style for the receipt modal */
+    .modal {
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0,0,0);
+        background-color: rgba(0,0,0,0.9);
+        display: none;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal-content {
+        margin: auto;
+        display: block;
+        width: 80%;
+        max-width: 700px;
+    }
+
+    .modal-content-img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .modal-content-pdf {
+        width: 100%;
+        height: 80vh;
+    }
+
+    .close {
+        position: absolute;
+        top: 15px;
+        right: 35px;
+        color: #f1f1f1;
+        font-size: 40px;
+        font-weight: bold;
+        transition: 0.3s;
+        cursor: pointer;
+    }
+
+    .close:hover,
+    .close:focus {
+        color: #bbb;
+        text-decoration: none;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-8">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">ثبت اطلاعات کارکنان روزانه</h1>
+    <p class="text-gray-500 text-sm">فرم زیر را برای ثبت کارکنان روزانه یا واریزی‌ها تکمیل کنید.</p>
+</header>
+
+<div class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl border border-gray-200 w-full max-w-4xl mx-auto">
+    <!-- Tab Navigation -->
+    <div class="mb-6 flex justify-center space-x-4 space-x-reverse">
+        <button id="daily-wage-tab" class="px-6 py-2 rounded-lg text-sm font-medium transition-colors duration-300 bg-indigo-600 text-white">ثبت روزمزد</button>
+        <button id="deposit-tab" class="px-6 py-2 rounded-lg text-sm font-medium transition-colors duration-300 bg-gray-200 text-gray-700">ثبت واریزی</button>
+    </div>
+
+    <!-- Daily Wage Form -->
+    <form id="daily-wage-form" action="{{ url_for('add_daily_worker') }}" method="post" class="space-y-6">
+        <input type="hidden" name="entry_type" value="daily_wage">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                <input type="text" id="date_fa" name="date_fa" required
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" data-jdp>
+            </div>
+            <div>
+                <label for="foreman_name" class="block text-sm font-medium text-gray-700">نام سرپرست:</label>
+                <input type="text" id="foreman_name" name="foreman_name" required list="foreman-list"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <datalist id="foreman-list">
+                    {% for foreman in foremen %}
+                        <option value="{{ foreman }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            <div>
+                <label for="location" class="block text-sm font-medium text-gray-700">محل انجام کار:</label>
+                <input type="text" id="location" name="location" required list="location-list"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <datalist id="location-list">
+                    {% for location in locations %}
+                        <option value="{{ location }}">
+                    {% endfor %}
+                </datalist>
+            </div>
+            <div>
+                <label for="worker_count" class="block text-sm font-medium text-gray-700">تعداد نفرات:</label>
+                <input type="number" id="worker_count" name="worker_count" required
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="daily_wage" class="block text-sm font-medium text-gray-700">مزد روزانه (ریال):</label>
+                <input type="text" id="daily_wage" name="daily_wage" required
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" oninput="formatNumberInput(this); calculateTotalAmount();">
+            </div>
+            <div>
+                <label for="transport_cost" class="block text-sm font-medium text-gray-700">هزینه ایاب و ذهاب (ریال):</label>
+                <input type="text" id="transport_cost" name="transport_cost"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" value="0" oninput="formatNumberInput(this); calculateTotalAmount();">
+            </div>
+            <div class="md:col-span-2">
+                <label for="total_amount" class="block text-sm font-medium text-gray-700">مبلغ کل روز (ریال):</label>
+                <input type="text" id="total_amount" name="total_amount" readonly
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 bg-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+        </div>
+        <div class="flex justify-end mt-6">
+            <button type="submit" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+                ثبت
+            </button>
+        </div>
+    </form>
+    
+    <!-- Deposit Form -->
+    <form id="deposit-form" action="{{ url_for('add_daily_worker') }}" method="post" enctype="multipart/form-data" class="space-y-6 hidden">
+        <input type="hidden" name="entry_type" value="deposit">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="deposit_date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                <input type="text" id="deposit_date_fa" name="date_fa" required
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" data-jdp>
+            </div>
+            <div>
+                <label for="deposit_foreman_name" class="block text-sm font-medium text-gray-700">نام سرپرست:</label>
+                <input type="text" id="deposit_foreman_name" name="deposit_foreman_name" required list="foreman-list"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="deposit_amount" class="block text-sm font-medium text-gray-700">مبلغ واریزی (ریال):</label>
+                <input type="text" id="deposit_amount" name="deposit_amount" required
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm" oninput="formatNumberInput(this)">
+            </div>
+            <div>
+                <label for="notes" class="block text-sm font-medium text-gray-700">توضیحات:</label>
+                <input type="text" id="notes" name="notes"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div class="md:col-span-2">
+                <label for="receipt_image" class="block text-sm font-medium text-gray-700">عکس رسید:</label>
+                <input type="file" id="receipt_image" name="receipt_image" accept="image/*, .pdf"
+                       class="mt-1 w-full p-3 rounded-lg border border-gray-300 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100">
+            </div>
+        </div>
+        <div class="flex justify-end mt-6">
+            <button type="submit" class="bg-indigo-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+                ثبت
+            </button>
+        </div>
+    </form>
+
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+<script src="/static/kamadatepicker.min.js"></script>
+<script>
+    function formatNumberInput(input) {
+        const value = input.value.replace(/,/g, '');
+        if (value) {
+            input.value = new Intl.NumberFormat('en-US').format(value);
+        }
+    }
+
+    // تابع محاسبه مبلغ کل بر اساس فرمول جدید
+    function calculateTotalAmount() {
+        const workerCount = parseInt(document.getElementById('worker_count').value) || 1;
+        const dailyWage = parseInt(document.getElementById('daily_wage').value.replace(/,/g, '')) || 0;
+        const transportCost = parseInt(document.getElementById('transport_cost').value.replace(/,/g, '')) || 0;
+        const totalAmount = (workerCount * dailyWage) + transportCost;
+        document.getElementById('total_amount').value = new Intl.NumberFormat('en-US').format(totalAmount);
+    }
+    
+    document.addEventListener('DOMContentLoaded', function () {
+        const dailyWageForm = document.getElementById('daily-wage-form');
+        const depositForm = document.getElementById('deposit-form');
+        const dailyWageTab = document.getElementById('daily-wage-tab');
+        const depositTab = document.getElementById('deposit-tab');
+        
+        // Tab switching logic
+        function switchTab(tabName) {
+            if (tabName === 'daily_wage') {
+                dailyWageForm.classList.remove('hidden');
+                depositForm.classList.add('hidden');
+                dailyWageTab.classList.add('bg-indigo-600', 'text-white');
+                dailyWageTab.classList.remove('bg-gray-200', 'text-gray-700');
+                depositTab.classList.add('bg-gray-200', 'text-gray-700');
+                depositTab.classList.remove('bg-indigo-600', 'text-white');
+            } else if (tabName === 'deposit') {
+                dailyWageForm.classList.add('hidden');
+                depositForm.classList.remove('hidden');
+                dailyWageTab.classList.add('bg-gray-200', 'text-gray-700');
+                dailyWageTab.classList.remove('bg-indigo-600', 'text-white');
+                depositTab.classList.add('bg-indigo-600', 'text-white');
+                depositTab.classList.remove('bg-gray-200', 'text-gray-700');
+            }
+        }
+
+        dailyWageTab.addEventListener('click', () => switchTab('daily_wage'));
+        depositTab.addEventListener('click', () => switchTab('deposit'));
+        
+        // Datepicker initialization
+        kamaDatepicker('date_fa', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        kamaDatepicker('deposit_date_fa', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        
+        // Autocomplete for foreman and location
+        $('#foreman_name').autocomplete({
+            source: function(request, response) {
+                $.getJSON('/autocomplete/daily_worker_field/foreman_name', { term: request.term }, response);
+            },
+            minLength: 2
+        });
+        $('#location').autocomplete({
+            source: function(request, response) {
+                $.getJSON('/autocomplete/daily_worker_field/location', { term: request.term }, response);
+            },
+            minLength: 2
+        });
+        
+        // Auto-calculation logic for daily wage form
+        const wageInputs = document.querySelectorAll('#worker_count, #daily_wage, #transport_cost');
+        wageInputs.forEach(input => {
+            input.addEventListener('input', calculateTotalAmount);
+        });
+        
+        const MAX_IMAGE_BYTES = 100 * 1024;
+        const PDF_WARNING_BYTES = 200 * 1024;
+
+        function formatKilobytes(bytes) {
+            return (bytes / 1024).toFixed(1);
+        }
+
+        function readImageDimensions(file) {
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                const objectUrl = URL.createObjectURL(file);
+                image.onload = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    resolve({ width: image.naturalWidth, height: image.naturalHeight });
+                };
+                image.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    reject(new Error('invalid image'));
+                };
+                image.src = objectUrl;
+            });
+        }
+
+        async function prepareReceiptAndSubmit(form) {
+            const fileInput = document.getElementById('receipt_image');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                HTMLFormElement.prototype.submit.call(form);
+                return;
+            }
+
+            if (file.type === 'application/pdf') {
+                if (file.size > PDF_WARNING_BYTES) {
+                    const shouldUpload = confirm(
+                        `حجم فایل زیاد است: ${formatKilobytes(file.size)} کیلوبایت. آیا مایل به آپلود آن هستید؟`
+                    );
+                    if (!shouldUpload) return;
+                }
+                HTMLFormElement.prototype.submit.call(form);
+                return;
+            }
+
+            if (!file.type.startsWith('image/')) {
+                alert('فقط فایل تصویر یا PDF قابل ارسال است.');
+                return;
+            }
+
+            try {
+                const original = await readImageDimensions(file);
+                const compressedFile = await imageCompression(file, {
+                    maxSizeMB: 0.095,
+                    maxWidthOrHeight: 1024,
+                    useWebWorker: true
+                });
+                const converted = await readImageDimensions(compressedFile);
+
+                if (
+                    compressedFile.size > MAX_IMAGE_BYTES ||
+                    converted.width > 1024 ||
+                    converted.height > 1024
+                ) {
+                    alert('امکان تبدیل عکس به حداکثر 100 کیلوبایت و 1024 پیکسل وجود ندارد. لطفاً عکس کوچک‌تر یا با کیفیت پایین‌تر انتخاب کنید.');
+                    return;
+                }
+
+                alert(
+                    `حجم عکس ${formatKilobytes(file.size)} کیلوبایت و رزولوشن آن ${original.width}×${original.height} پیکسل است؛ ` +
+                    `تبدیل به ${formatKilobytes(compressedFile.size)} کیلوبایت و ${converted.width}×${converted.height} پیکسل می‌شود.`
+                );
+
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(compressedFile);
+                fileInput.files = dataTransfer.files;
+                HTMLFormElement.prototype.submit.call(form);
+            } catch (error) {
+                console.error('خطا در فشرده‌سازی عکس:', error);
+                alert('فشرده‌سازی عکس انجام نشد؛ فایل ارسال نشد. لطفاً عکس دیگری انتخاب کنید.');
+            }
+        }
+        depositForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            await prepareReceiptAndSubmit(this);
+        });
+        // Initial calculation on page load
+        calculateTotalAmount();
+        
+        // iOS/Android file input capture logic
+        const fileInput = document.getElementById('receipt_image');
+        if (fileInput) {
+            if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+                fileInput.setAttribute('capture', '');
+            }
+            if (/Android/.test(navigator.userAgent)) {
+                fileInput.setAttribute('capture', 'environment');
+            }
+        }
+    });
+</script>
+{% endblock %}

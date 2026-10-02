@@ -1,0 +1,294 @@
+{% extends "layout.html" %}
+
+{% block title %}گزارشات تأسیسات{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+<style>
+/* Modal container, hidden by default */
+.modal {
+    display: none; /* Hide the modal by default */
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgb(0,0,0); /* Fallback color */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+    align-items: center; /* Center vertically */
+    justify-content: center; /* Center horizontally */
+}
+/* Modal content/box */
+.modal-content {
+    background-color: #fefefe;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 90%;
+    max-width: 800px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    position: relative;
+}
+/* The Close Button */
+.close-button {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+.close-button:hover,
+.close-button:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+.edit-form-row {
+    background-color: #e2e8f0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">گزارشات روزانه تأسیسات</h1>
+    <p class="text-gray-500 text-sm">بررسی و مدیریت گزارشات روزانه تأسیسات ثبت‌شده.</p>
+</header>
+
+<section class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-4">فیلتر گزارش</h2>
+    <form action="/facilities_reports" method="get" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div>
+                <label for="start_date_filter" class="block text-sm font-medium text-gray-700">تاریخ شروع:</label>
+                <input type="text" id="start_date_filter" name="start_date" value="{{ start_date if start_date else '' }}" placeholder="1404/01/01" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="end_date_filter" class="block text-sm font-medium text-gray-700">تاریخ پایان:</label>
+                <input type="text" id="end_date_filter" name="end_date" value="{{ end_date if end_date else '' }}" placeholder="1404/12/29" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="companion_filter" class="block text-sm font-medium text-gray-700">نفر همراه:</label>
+                <select id="companion_filter" name="companion_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <option value="all" {% if selected_companion == 'all' or selected_companion == none %}selected{% endif %}>همه</option>
+                    {% for companion in companions %}
+                    <option value="{{ companion }}" {% if selected_companion == companion %}selected{% endif %}>{{ companion }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="location_filter" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+                <select id="location_filter" name="location_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <option value="all" {% if selected_location == 'all' or selected_location == none %}selected{% endif %}>همه</option>
+                    {% for location in locations %}
+                    <option value="{{ location }}" {% if selected_location == location %}selected{% endif %}>{{ location }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lg:col-span-2">
+                <label for="material_source_filter" class="block text-sm font-medium text-gray-700">محل تامین مواد و مصالح:</label>
+                <select id="material_source_filter" name="material_source_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <option value="all" {% if selected_material_source == 'all' or selected_material_source == none %}selected{% endif %}>همه</option>
+                    {% for source in material_sources_list %}
+                    <option value="{{ source }}" {% if selected_material_source == source %}selected{% endif %}>{{ source }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="flex justify-end mt-4">
+            <button type="submit" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+                اعمال فیلتر
+            </button>
+            <a href="{{ url_for('export_facilities_reports', start_date=start_date, end_date=end_date, companion_filter=selected_companion, location_filter=selected_location, material_source_filter=selected_material_source) }}" class="mr-2 bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-gray-700 transition duration-300 flex items-center">
+                خروجی اکسل
+            </a>
+        </div>
+    </form>
+</section>
+
+<div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+    <div class="overflow-x-auto max-h-96 overflow-y-auto">
+        <table class="min-w-full text-sm divide-y divide-gray-200">
+            <thead class="bg-gray-50 sticky top-0">
+                <tr>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">تاریخ</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">تاسیسات کار</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">نفر همراه</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">محل فعالیت</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">شرح فعالیت</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">مدت زمان</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">مواد و مصالح</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">محل تامین</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for record in records %}
+                <tr class="hover:bg-gray-100 facilities-log-item"
+                    data-id="{{ record.id }}"
+                    data-date="{{ record.date }}"
+                    data-facility-name="{{ record.facility_name }}"
+                    data-companion-name="{{ record.companion_name }}"
+                    data-activity-location="{{ record.activity_location }}"
+                    data-activity-description="{{ record.activity_description }}"
+                    data-duration="{{ record.duration }}"
+                    data-materials="{{ record.materials }}"
+                    data-material-source="{{ record.material_source }}">
+                    <td class="px-6 py-4 whitespace-nowrap">{{ record.date }}</td>
+                    <td class="px-6 py-4">{{ record.facility_name }}</td>
+                    <td class="px-6 py-4">{{ record.companion_name }}</td>
+                    <td class="px-6 py-4">{{ record.activity_location }}</td>
+                    <td class="px-6 py-4">{{ record.activity_description }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">{{ record.duration }}</td>
+                    <td class="px-6 py-4">{{ record.materials }}</td>
+                    <td class="px-6 py-4">{{ record.material_source }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap flex space-x-2 space-x-reverse">
+                        <button type="button" onclick="openEditModal(this)" class="text-indigo-600 hover:text-indigo-900 transition duration-300">
+                            ویرایش
+                        </button>
+                        <form action="/delete_facilities_log/{{ record.id }}" method="post" class="inline-block" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این رکورد را حذف کنید؟');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 transition duration-300">
+                                حذف
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="px-6 py-4 text-center text-gray-400">هیچ رکوردی یافت نشد.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- The Edit Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" onclick="closeEditModal()">&times;</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-4">ویرایش گزارش تأسیسات</h2>
+        <form id="edit-facilities-log-form" action="" method="post" class="space-y-3">
+            <input type="hidden" name="id" id="edit_id">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="edit_date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                    <input type="text" id="edit_date_fa" name="date_fa" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_facility_name" class="block text-sm font-medium text-gray-700">نام تاسیسات کار:</label>
+                    <input type="text" id="edit_facility_name" name="facility_name" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_companion_name" class="block text-sm font-medium text-gray-700">نفر همراه:</label>
+                    <input type="text" id="edit_companion_name" name="companion_name"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_activity_location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+                    <input type="text" id="edit_activity_location" name="activity_location" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_duration" class="block text-sm font-medium text-gray-700">مدت زمان انجام:</label>
+                    <input type="text" id="edit_duration" name="duration"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_materials" class="block text-sm font-medium text-gray-700">مواد و مصالح مصرفی:</label>
+                    <input type="text" id="edit_materials" name="materials"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_material_source" class="block text-sm font-medium text-gray-700">محل تامین:</label>
+                    <input type="text" id="edit_material_source" name="material_source"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+            </div>
+            <div class="mt-4">
+                <label for="edit_activity_description" class="block text-sm font-medium text-gray-700">شرح فعالیت:</label>
+                <textarea id="edit_activity_description" name="activity_description" rows="3" required
+                          class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"></textarea>
+            </div>
+            <div class="flex justify-end space-x-3 space-x-reverse mt-4">
+                <button type="submit" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-green-700">ذخیره</button>
+                <button type="button" onclick="closeEditModal()" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-gray-500">انصراف</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+
+<script>
+function openEditModal(button) {
+    const row = button.closest('tr');
+    const recordData = row.dataset;
+
+    document.getElementById('edit_id').value = recordData.id;
+    document.getElementById('edit_date_fa').value = recordData.date;
+    document.getElementById('edit_facility_name').value = recordData.facilityName;
+    document.getElementById('edit_companion_name').value = recordData.companionName;
+    document.getElementById('edit_activity_location').value = recordData.activityLocation;
+    document.getElementById('edit_activity_description').value = recordData.activityDescription;
+    document.getElementById('edit_duration').value = recordData.duration;
+    document.getElementById('edit_materials').value = recordData.materials;
+    document.getElementById('edit_material_source').value = recordData.materialSource;
+
+    const editForm = document.getElementById('edit-facilities-log-form');
+    editForm.action = `/edit_facilities_log/${recordData.id}`;
+
+    const modal = document.getElementById('editModal');
+    modal.style.display = 'flex';
+    
+    kamaDatepicker('edit_date_fa', {
+        forceSelected: true,
+        buttonsColor: "red",
+        forceFarsiDigits: true,
+        markToday:true,
+        markHolidays:true,
+        gotoToday:true,
+        closeAfterSelect:true
+    });
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('editModal');
+    modal.style.display = 'none';
+}
+
+window.addEventListener('click', (event) => {
+    const modal = document.getElementById('editModal');
+    if (event.target == modal) {
+        closeEditModal();
+    }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    kamaDatepicker('start_date_filter', {
+       forceSelected: true,
+        buttonsColor: "red",
+        forceFarsiDigits: true,
+        markToday:true,
+        markHolidays:true,
+        gotoToday:true,
+        closeAfterSelect:true
+    });
+    kamaDatepicker('end_date_filter', {
+       forceSelected: true,
+        buttonsColor: "red",
+        forceFarsiDigits: true,
+        markToday:true,
+        markHolidays:true,
+        gotoToday:true,
+        closeAfterSelect:true
+    });
+});
+</script>
+{% endblock %}

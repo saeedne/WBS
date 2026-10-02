@@ -1,0 +1,181 @@
+{% extends "layout.html" %}
+
+{% block title %}گزارش دستمزد روزانه{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/persian-datepicker.min.css">
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">گزارش دستمزد روزانه</h1>
+    <p class="text-gray-500 text-sm">گزارش کامل تمام دستمزدهای روزانه ثبت‌شده.</p>
+</header>
+
+<section class="filter-section mb-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-4">فیلتر گزارش</h2>
+    <form action="/daily_wage_reports" method="get" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+            <div>
+                <label for="start_date_filter" class="block text-sm font-medium text-gray-700">تاریخ شروع:</label>
+                <input type="text" id="start_date_filter" name="start_date" value="{{ start_date if start_date else '' }}" placeholder="1404/01/01" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="end_date_filter" class="block text-sm font-medium text-gray-700">تاریخ پایان:</label>
+                <input type="text" id="end_date_filter" name="end_date" value="{{ end_date if end_date else '' }}" placeholder="1404/12/29" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="supervisor_name" class="block text-sm font-medium text-gray-700">نام سرکارگر:</label>
+                <select id="supervisor_name" name="supervisor_name" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <option value="all" {% if selected_supervisor == 'all' or selected_supervisor == none %}selected{% endif %}>همه</option>
+                    {% for supervisor in supervisors %}
+                        <option value="{{ supervisor }}" {% if selected_supervisor == supervisor %}selected{% endif %}>{{ supervisor }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="flex justify-end mt-4">
+            <button type="submit" class="bg-indigo-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+                اعمال فیلتر
+            </button>
+            <a href="{{ url_for('export_daily_wages', start_date=start_date, end_date=end_date, supervisor_name=selected_supervisor) }}" class="mr-2 bg-gray-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-gray-700 transition duration-300 flex items-center">
+                خروجی اکسل
+            </a>
+        </div>
+    </form>
+</section>
+
+<div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+    <div class="overflow-x-auto">
+        <table class="min-w-full text-sm divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">تاریخ</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">نام سرکارگر</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">دستمزد روزانه</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">تعداد نفرات</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">ایاب و ذهاب</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">مبلغ کل</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">محل فعالیت</th>
+                    <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for record in records %}
+                <tr class="hover:bg-gray-100" data-id="{{ record.id }}">
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="date_fa">{{ record.date }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="supervisor_name">{{ record.supervisor_name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="daily_wage">{{ "{:,.0f}".format(record.daily_wage) }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="number_of_people">{{ record.number_of_people }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="transportation_cost">{{ "{:,.0f}".format(record.transportation_cost) }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="total_amount">{{ "{:,.0f}".format(record.total_amount) }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap" data-name="location">{{ record.location or '---' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <button onclick="showEditForm(this)" class="text-indigo-600 hover:text-indigo-900 transition duration-300">
+                            ویرایش
+                        </button>
+                        <form action="/delete_daily_wage/{{ record.id }}" method="post" class="inline-block" onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این رکورد را حذف کنید؟');">
+                            <button type="submit" class="text-red-600 hover:text-red-900 transition duration-300 mr-2">
+                                حذف
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="px-6 py-4 text-center text-gray-400">هیچ رکوردی یافت نشد.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/persian-date.min.js"></script>
+<script src="/static/persian-datepicker.min.js"></script>
+<script>
+    function showEditForm(button) {
+        const row = button.closest('tr');
+        const id = row.dataset.id;
+        const date_fa = row.querySelector('[data-name="date_fa"]').textContent.trim();
+        const supervisor_name = row.querySelector('[data-name="supervisor_name"]').textContent.trim();
+        const daily_wage = row.querySelector('[data-name="daily_wage"]').textContent.trim().replace(/,/g, '');
+        const number_of_people = row.querySelector('[data-name="number_of_people"]').textContent.trim();
+        const transportation_cost = row.querySelector('[data-name="transportation_cost"]').textContent.trim().replace(/,/g, '');
+        const total_amount = row.querySelector('[data-name="total_amount"]').textContent.trim().replace(/,/g, '');
+        const location = row.querySelector('[data-name="location"]').textContent.trim() === '---' ? '' : row.querySelector('[data-name="location"]').textContent.trim();
+        
+        const editRow = document.createElement('tr');
+        editRow.classList.add('edit-form-row');
+        editRow.innerHTML = `
+            <td colspan="8" class="px-6 py-4">
+                <form action="/edit_daily_wage/${id}" method="post" class="space-y-3">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label for="edit_date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                            <input type="text" id="edit_date_fa" name="date_fa" value="${date_fa}" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="edit_supervisor_name" class="block text-sm font-medium text-gray-700">نام سرکارگر:</label>
+                            <input type="text" id="edit_supervisor_name" name="supervisor_name" value="${supervisor_name}" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="edit_daily_wage" class="block text-sm font-medium text-gray-700">دستمزد روزانه:</label>
+                            <input type="number" id="edit_daily_wage" name="daily_wage" value="${daily_wage}" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="edit_number_of_people" class="block text-sm font-medium text-gray-700">تعداد نفرات:</label>
+                            <input type="number" id="edit_number_of_people" name="number_of_people" value="${number_of_people}" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="edit_transportation_cost" class="block text-sm font-medium text-gray-700">ایاب و ذهاب:</label>
+                            <input type="number" id="edit_transportation_cost" name="transportation_cost" value="${transportation_cost}" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                        <div>
+                            <label for="edit_total_amount" class="block text-sm font-medium text-gray-700">مبلغ کل:</label>
+                            <input type="number" id="edit_total_amount" name="total_amount" value="${total_amount}" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                         <div class="md:col-span-2">
+                            <label for="edit_location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+                            <input type="text" id="edit_location" name="location" value="${location}" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-3 space-x-reverse mt-3">
+                        <button type="submit" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">ذخیره</button>
+                        <button type="button" onclick="cancelEdit(this)" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm">انصراف</button>
+                    </div>
+                </form>
+            </td>
+        `;
+
+        row.after(editRow);
+        row.style.display = 'none';
+        
+        // Initialize the new datepicker input
+        $(editRow).find("#edit_date_fa").pDatepicker({
+            initialValue: false,
+            format: 'YYYY/MM/DD',
+            autoClose: true
+        });
+    }
+
+    function cancelEdit(button) {
+        const editRow = button.closest('tr');
+        const originalRow = editRow.previousElementSibling;
+
+        originalRow.style.display = 'table-row';
+        editRow.remove();
+    }
+
+    $(document).ready(function() {
+        $("#start_date_filter, #end_date_filter").pDatepicker({
+            initialValue: false,
+            format: 'YYYY/MM/DD',
+            autoClose: true
+        });
+    });
+</script>
+{% endblock %}

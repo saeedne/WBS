@@ -1,0 +1,1940 @@
+{% extends "layout.html" %}
+
+{% block title %}پیشرفت فیزیکی پروژه{% endblock %}
+
+
+{% block head_extra %}
+
+<script src="/static/chart.min.js"></script>
+
+<style>
+
+    .chart-box {
+        height: 360px;
+    }
+
+    .chart-box-sm {
+        height: 300px;
+    }
+
+
+    /* =========================================================
+       جدول WBS - ساختار درختی مشابه project_wbs
+       ========================================================= */
+
+    .wbs-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+
+    .wbs-table th,
+    .wbs-table td {
+        border-bottom: 1px solid #e5e7eb;
+        white-space: nowrap;
+    }
+
+
+    .wbs-table tbody tr[data-wbs-row] {
+        transition: background-color .15s ease;
+    }
+
+
+    .wbs-table tbody tr[data-wbs-row]:hover {
+        background-color: #f9fafb;
+    }
+
+
+    .wbs-parent-row {
+        font-weight: 600;
+    }
+
+
+    /* =========================================================
+       دکمه + و -
+       ========================================================= */
+
+    .wbs-toggle {
+
+        display: inline-flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        width: 24px;
+
+        height: 24px;
+
+        margin-left: 6px;
+
+        border-radius: 5px;
+
+        border: 1px solid #d1d5db;
+
+        background: #f3f4f6;
+
+        color: #374151;
+
+        font-weight: bold;
+
+        font-size: 16px;
+
+        cursor: pointer;
+
+        vertical-align: middle;
+
+        transition:
+            background-color .15s ease,
+            border-color .15s ease;
+
+    }
+
+
+    .wbs-toggle:hover {
+
+        background: #e5e7eb;
+
+        border-color: #9ca3af;
+
+    }
+
+
+    /* =========================================================
+       سلول کد WBS
+       ========================================================= */
+
+    .wbs-code-cell {
+
+        display: flex;
+
+        align-items: center;
+
+    }
+
+
+    /* =========================================================
+       تورفتگی سطوح WBS
+       ========================================================= */
+
+    .wbs-indent-0 {
+        padding-right: 0;
+    }
+
+
+    .wbs-indent-1 {
+        padding-right: 28px;
+    }
+
+
+    .wbs-indent-2 {
+        padding-right: 56px;
+    }
+
+
+    .wbs-indent-3 {
+        padding-right: 84px;
+    }
+
+
+    .wbs-indent-4 {
+        padding-right: 112px;
+    }
+
+
+    .wbs-indent-5 {
+        padding-right: 140px;
+    }
+
+
+    .wbs-indent-6 {
+        padding-right: 168px;
+    }
+
+
+    /* =========================================================
+       ردیف‌های بسته
+       ========================================================= */
+
+    .wbs-child-hidden {
+        display: none;
+    }
+
+
+    /* =========================================================
+       مقدارهای سرفصل
+       ========================================================= */
+
+    .wbs-parent-value {
+        font-weight: 700;
+    }
+
+</style>
+
+{% endblock %}
+
+
+
+{% block content %}
+
+
+<!-- =========================================================
+     عنوان صفحه
+     ========================================================= -->
+
+<header class="text-center mb-6">
+
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">
+        داشبورد پیشرفت فیزیکی پروژه
+    </h1>
+
+    <p class="text-gray-500 text-sm">
+        پیشرفت فقط از ارتباط هزینه‌های ثبت‌شده در «فرم ثبت هزینه»
+        با آیتم‌های WBS محاسبه می‌شود.
+    </p>
+
+</header>
+
+
+
+<!-- =========================================================
+     دکمه‌های بالای صفحه
+     ========================================================= -->
+
+<div class="flex justify-center gap-2 mb-6">
+
+    {% if session['user']['permissions'].get('project_wbs') %}
+
+    <a
+        href="/project_wbs"
+        class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg"
+    >
+        مدیریت ساختار شکست
+    </a>
+
+    {% endif %}
+
+
+    <a
+        href="/petty_cash"
+        class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg"
+    >
+        ثبت هزینه
+    </a>
+
+</div>
+
+
+
+<!-- =========================================================
+     کارت‌های خلاصه
+     ========================================================= -->
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+
+    <!-- پیشرفت کل -->
+
+    <div class="bg-white p-5 rounded-lg shadow border text-center">
+
+        <div
+            id="overall-progress"
+            class="text-3xl font-bold text-indigo-700"
+        >
+            ۰٪
+        </div>
+
+        <div class="text-sm text-gray-500">
+            پیشرفت کل پروژه
+        </div>
+
+    </div>
+
+
+
+    <!-- مجموع وزن -->
+
+    <div class="bg-white p-5 rounded-lg shadow border text-center">
+
+        <div
+            id="total-weight"
+            class="text-3xl font-bold text-blue-700"
+        >
+            ۰٪
+        </div>
+
+        <div class="text-sm text-gray-500">
+            مجموع وزن فعالیت‌ها
+        </div>
+
+    </div>
+
+
+
+    <!-- تعداد WBS -->
+
+    <div class="bg-white p-5 rounded-lg shadow border text-center">
+
+        <div
+            id="wbs-count"
+            class="text-3xl font-bold text-green-700"
+        >
+            ۰
+        </div>
+
+        <div class="text-sm text-gray-500">
+            تعداد آیتم‌های WBS
+        </div>
+
+    </div>
+
+
+
+    <!-- دارای پیشرفت -->
+
+    <div class="bg-white p-5 rounded-lg shadow border text-center">
+
+        <div
+            id="active-count"
+            class="text-3xl font-bold text-yellow-700"
+        >
+            ۰
+        </div>
+
+        <div class="text-sm text-gray-500">
+            آیتم‌های دارای پیشرفت
+        </div>
+
+    </div>
+
+</div>
+
+
+
+<!-- =========================================================
+     پیام خالی بودن اطلاعات
+     ========================================================= -->
+
+<div
+    id="empty-message"
+    class="hidden bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg mb-6 text-center"
+>
+    هنوز ساختار شکست یا هزینه متصل به WBS ثبت نشده است.
+</div>
+
+
+
+<!-- =========================================================
+     نمودارهای بالا
+     ========================================================= -->
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+
+    <!-- نمودار پیشرفت کل -->
+
+    <section class="bg-white p-5 rounded-lg shadow-2xl border">
+
+        <h2 class="text-lg font-bold mb-3">
+            پیشرفت کل پروژه
+        </h2>
+
+        <div class="chart-box">
+
+            <canvas id="overallChart"></canvas>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- نمودار بخش‌ها -->
+
+    <section class="bg-white p-5 rounded-lg shadow-2xl border">
+
+        <h2 class="text-lg font-bold mb-3">
+            پیشرفت وزنی بخش‌ها
+        </h2>
+
+        <div class="chart-box">
+
+            <canvas id="groupsChart"></canvas>
+
+        </div>
+
+    </section>
+
+</div>
+
+
+
+<!-- =========================================================
+     نمودار آیتم‌های WBS
+     ========================================================= -->
+
+<section class="bg-white p-5 rounded-lg shadow-2xl border mb-6">
+
+    <h2 class="text-lg font-bold mb-3">
+        پیشرفت هر آیتم WBS
+    </h2>
+
+    <div class="chart-box">
+
+        <canvas id="itemsChart"></canvas>
+
+    </div>
+
+</section>
+
+
+
+<!-- =========================================================
+     جدول جزئیات پیشرفت
+     ========================================================= -->
+
+<section class="bg-white rounded-xl overflow-hidden shadow-2xl border mb-6">
+
+
+    <div class="p-4">
+
+        <h2 class="text-lg font-bold">
+            جدول جزئیات پیشرفت
+        </h2>
+
+    </div>
+
+
+    <div class="overflow-x-auto max-h-[70vh]">
+
+        <table class="wbs-table min-w-full text-sm">
+
+
+            <!-- =================================================
+                 سرستون‌ها
+                 ================================================= -->
+
+            <thead class="bg-gray-100 sticky top-0 z-10">
+
+                <tr>
+
+                    <th class="p-2 text-right">
+                        کد WBS
+                    </th>
+
+
+                    <th class="p-2 text-right">
+                        آیتمهای مرتبط
+                    </th>
+
+
+                    <th class="p-2 text-right">
+                        شرح فعالیت
+                    </th>
+
+
+                    <th class="p-2 text-right">
+                        وزن
+                    </th>
+
+
+                    <th class="p-2 text-right">
+                        پوشش ثبت‌شده
+                    </th>
+
+
+                    <th class="p-2 text-right">
+                        پیشرفت وزنی
+                    </th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody id="progress-table"></tbody>
+
+
+        </table>
+
+    </div>
+
+</section>
+
+<dialog id="linkedExpenseDialog" class="w-[min(94vw,760px)] max-h-[88vh] rounded-xl p-0 shadow-2xl backdrop:bg-black/60">
+    <div class="p-5">
+        <div class="flex items-center justify-between gap-4 border-b pb-3 mb-4">
+            <h2 id="linkedExpenseTitle" class="text-xl font-bold text-gray-800">جزئیات آیتم هزینه</h2>
+            <button type="button" id="closeLinkedExpenseDialog" class="text-2xl leading-none text-gray-500" aria-label="بستن">&times;</button>
+        </div>
+        <dl id="linkedExpenseDetails" class="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3 text-sm max-h-[68vh] overflow-y-auto"></dl>
+        <div class="flex justify-end mt-5">
+            <button type="button" id="closeLinkedExpenseDialogFooter" class="px-4 py-2 rounded bg-gray-200">بستن</button>
+        </div>
+    </div>
+</dialog>
+
+
+{% endblock %}
+
+
+
+{% block scripts_extra %}
+
+<script>
+
+
+/* =========================================================
+   تبدیل عدد به فارسی
+   ========================================================= */
+
+const faNumber = n =>
+
+    Number(n || 0).toLocaleString(
+
+        'fa-IR',
+
+        {
+            maximumFractionDigits: 2
+        }
+
+    );
+
+
+
+/* =========================================================
+   دریافت اطلاعات پیشرفت
+   ========================================================= */
+
+fetch('/api/project_progress_data')
+
+
+.then(r => r.json())
+
+
+.then(data => {
+
+
+    /* =====================================================
+       اطلاعات اصلی
+       ===================================================== */
+
+    const overall =
+        data.overall || {};
+
+
+    const items =
+        data.items || [];
+
+
+    const groups =
+        data.groups || [];
+
+
+
+    /* =====================================================
+       کارت‌های خلاصه
+       ===================================================== */
+
+    document
+        .getElementById('overall-progress')
+        .textContent =
+            faNumber(
+                overall.progress
+            ) + '٪';
+
+
+
+    document
+        .getElementById('total-weight')
+        .textContent =
+            faNumber(
+                overall.weight
+            ) + '٪';
+
+
+
+    document
+        .getElementById('wbs-count')
+        .textContent =
+            faNumber(
+                overall.items
+            );
+
+
+
+    document
+        .getElementById('active-count')
+        .textContent =
+
+            faNumber(
+
+                items.filter(
+
+                    i =>
+                        Number(
+                            i.coverage_percent
+                        ) > 0
+
+                ).length
+
+            );
+
+
+
+    /* =====================================================
+       پیام خالی بودن
+       ===================================================== */
+
+    if (!items.length) {
+
+        document
+            .getElementById('empty-message')
+            .classList
+            .remove('hidden');
+
+    }
+
+
+
+    /* =====================================================
+       نمودار پیشرفت کل پروژه
+       ===================================================== */
+
+    new Chart(
+
+        document.getElementById(
+            'overallChart'
+        ),
+
+        {
+
+            type: 'doughnut',
+
+            data: {
+
+                labels: [
+
+                    'پیشرفت شده',
+
+                    'باقیمانده'
+
+                ],
+
+                datasets: [
+
+                    {
+
+                        data: [
+
+                            Number(
+                                overall.progress || 0
+                            ),
+
+                            Math.max(
+
+                                0,
+
+                                100 -
+
+                                Number(
+                                    overall.progress || 0
+                                )
+
+                            )
+
+                        ],
+
+                        backgroundColor: [
+
+                            '#2196F3',
+
+                            '#BBDEFB'
+
+                        ]
+
+                    }
+
+                ]
+
+            },
+
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                plugins: {
+
+                    legend: {
+
+                        position: 'bottom'
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+
+    /* =====================================================
+       نمودار پیشرفت وزنی بخش‌ها
+       ===================================================== */
+
+    new Chart(
+
+        document.getElementById(
+            'groupsChart'
+        ),
+
+        {
+
+            type: 'bar',
+
+            data: {
+
+                labels:
+
+                    groups.map(
+
+                        g =>
+                            g.code +
+                            ' - ' +
+                            g.name
+
+                    ),
+
+
+                datasets: [
+
+                    {
+
+                        label:
+                            'پیشرفت وزنی (%)',
+
+
+                        data:
+
+                            groups.map(
+
+                                g =>
+                                    Number(
+                                        g.weighted_progress || 0
+                                    )
+
+                            ),
+
+
+                        backgroundColor: [
+
+                            '#2196F3',
+
+                            '#BBDEFB'
+
+                        ]
+
+                    }
+
+                ]
+
+            },
+
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                indexAxis: 'y',
+
+                scales: {
+
+                    x: {
+
+                        beginAtZero: true,
+
+                        max:
+
+                            Math.max(
+
+                                10,
+
+                                Math.ceil(
+
+                                    Math.max(
+
+                                        ...groups.map(
+
+                                            g =>
+                                                Number(
+                                                    g.weighted_progress || 0
+                                                )
+
+                                        ),
+
+                                        0
+
+                                    ) / 5
+
+                                ) * 5
+
+                            )
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+
+    /* =====================================================
+       نمودار آیتم‌های دارای پیشرفت
+       ===================================================== */
+
+    const topItems =
+
+        items
+
+            .filter(
+
+                i =>
+                    Number(
+                        i.coverage_percent
+                    ) > 0
+
+            )
+
+            .sort(
+
+                (a, b) =>
+
+                    Number(
+                        b.weighted_progress || 0
+                    )
+
+                    -
+
+                    Number(
+                        a.weighted_progress || 0
+                    )
+
+            );
+
+
+
+    new Chart(
+
+        document.getElementById(
+            'itemsChart'
+        ),
+
+        {
+
+            type: 'bar',
+
+            data: {
+
+                labels:
+
+                    topItems.map(
+
+                        i =>
+
+                            i.wbs_code +
+                            ' - ' +
+                            i.activity
+
+                    ),
+
+
+                datasets: [
+
+                    {
+
+                        label:
+                            'پیشرفت وزنی (%)',
+
+
+                        data:
+
+                            topItems.map(
+
+                                i =>
+                                    Number(
+                                        i.weighted_progress || 0
+                                    )
+
+                            ),
+
+
+                        backgroundColor: [
+
+                            '#2196F3',
+
+                            '#BBDEFB'
+
+                        ]
+
+                    }
+
+                ]
+
+            },
+
+
+            options: {
+
+                responsive: true,
+
+                maintainAspectRatio: false,
+
+                scales: {
+
+                    y: {
+
+                        beginAtZero: true
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    );
+
+
+
+    /* =========================================================
+       توابع ساختار درختی WBS
+       ========================================================= */
+
+
+    /*
+     * تعیین سطح WBS
+     *
+     * 1             => سطح 0
+     * 1.1           => سطح 1
+     * 1.1.1         => سطح 2
+     * 1.1.1.1       => سطح 3
+     */
+
+    const getLevel = code => {
+
+        if (!code) {
+
+            return 0;
+
+        }
+
+
+        return String(code)
+            .split('.')
+            .length - 1;
+
+    };
+
+
+
+    /*
+     * آیا آیتم دارای زیرمجموعه است؟
+     */
+
+    const hasChildren = (
+        code,
+        allItems
+    ) => {
+
+        const prefix =
+            String(code) + '.';
+
+
+        return allItems.some(
+
+            item =>
+
+                String(
+                    item.wbs_code || ''
+                ).startsWith(prefix)
+
+        );
+
+    };
+
+
+
+    /*
+     * پیدا کردن فرزندان مستقیم
+     */
+
+    const getDirectChildren = (
+        parentCode,
+        allItems
+    ) => {
+
+        const parentLevel =
+            getLevel(parentCode);
+
+
+        return allItems.filter(
+
+            item => {
+
+                const code =
+                    String(
+                        item.wbs_code || ''
+                    );
+
+
+                const level =
+                    getLevel(code);
+
+
+                return (
+
+                    level ===
+                    parentLevel + 1
+
+                    &&
+
+                    code.startsWith(
+                        String(parentCode) + '.'
+                    )
+
+                );
+
+            }
+
+        );
+
+    };
+
+
+
+    /* =========================================================
+       کپی اطلاعات API
+       ========================================================= */
+
+    const progressItems =
+
+        items.map(
+
+            item => ({
+
+                ...item,
+
+
+                wbs_code:
+                    String(
+                        item.wbs_code || ''
+                    ),
+
+
+                weight_percent:
+                    Number(
+                        item.weight_percent || 0
+                    ),
+
+
+                coverage_percent:
+                    Number(
+                        item.coverage_percent || 0
+                    ),
+
+
+                weighted_progress:
+                    Number(
+                        item.weighted_progress || 0
+                    )
+
+            })
+
+        );
+
+
+
+    const expenseDetailsByLink = new Map();
+    progressItems.forEach(item => {
+        (item.linked_expenses || []).forEach(expense => {
+            expenseDetailsByLink.set(`${expense.id}:${item.wbs_code}`, expense);
+        });
+    });
+
+
+    /* =========================================================
+       تعیین عمیق‌ترین سطح WBS
+       ========================================================= */
+
+    const maxLevel =
+
+        Math.max(
+
+            ...progressItems.map(
+
+                item =>
+                    getLevel(
+                        item.wbs_code
+                    )
+
+            ),
+
+            0
+
+        );
+
+
+
+    /* =========================================================
+       محاسبه سرفصل‌ها از پایین به بالا
+       =========================================================
+
+       مثال:
+
+       1
+       ├── 1.1
+       │   ├── 1.1.1
+       │   └── 1.1.2
+       ├── 1.2
+       └── 1.3
+
+       ابتدا 1.1 محاسبه می‌شود،
+       سپس 1 محاسبه می‌شود.
+       ========================================================= */
+
+
+    for (
+
+        let level =
+            maxLevel - 1;
+
+        level >= 0;
+
+        level--
+
+    ) {
+
+
+        const parents =
+
+            progressItems.filter(
+
+                item =>
+
+                    getLevel(
+                        item.wbs_code
+                    ) === level
+
+                    &&
+
+                    hasChildren(
+                        item.wbs_code,
+                        progressItems
+                    )
+
+            );
+
+
+
+        parents.forEach(
+
+            parent => {
+
+
+                /* =============================================
+                   فرزندان مستقیم
+                   ============================================= */
+
+                const children =
+
+                    getDirectChildren(
+
+                        parent.wbs_code,
+
+                        progressItems
+
+                    );
+
+
+
+                if (!children.length) {
+
+                    return;
+
+                }
+
+
+
+                /* =============================================
+                   وزن سرفصل
+                   =
+                   مجموع وزن فرزندان
+                   ============================================= */
+
+                const totalWeight =
+
+                    children.reduce(
+
+                        (sum, child) =>
+
+                            sum +
+
+                            Number(
+                                child.weight_percent || 0
+                            ),
+
+                        0
+
+                    );
+
+
+
+                /* =============================================
+                   پیشرفت وزنی سرفصل
+                   =
+                   مجموع پیشرفت وزنی فرزندان
+                   ============================================= */
+
+                const totalWeightedProgress =
+
+                    children.reduce(
+
+                        (sum, child) =>
+
+                            sum +
+
+                            Number(
+                                child.weighted_progress || 0
+                            ),
+
+                        0
+
+                    );
+
+
+
+                /* =============================================
+                   پوشش ثبت‌شده سرفصل
+                   =
+                   میانگین وزنی پوشش فرزندان
+                   ============================================= */
+
+                let weightedCoverage = 0;
+
+
+
+                if (totalWeight > 0) {
+
+
+                    weightedCoverage =
+
+                        children.reduce(
+
+                            (sum, child) => {
+
+
+                                const childWeight =
+
+                                    Number(
+                                        child.weight_percent || 0
+                                    );
+
+
+                                const childCoverage =
+
+                                    Number(
+                                        child.coverage_percent || 0
+                                    );
+
+
+                                return (
+
+                                    sum +
+
+                                    childWeight *
+                                    childCoverage
+
+                                );
+
+                            },
+
+                            0
+
+                        )
+
+                        /
+
+                        totalWeight;
+
+                }
+
+
+
+                /* =============================================
+                   ذخیره مقادیر محاسبه‌شده
+                   ============================================= */
+
+                parent.weight_percent =
+                    totalWeight;
+
+
+                parent.coverage_percent =
+                    weightedCoverage;
+
+
+                parent.weighted_progress =
+                    totalWeightedProgress;
+
+            }
+
+        );
+
+    }
+
+
+
+    /* =========================================================
+       ساخت جدول درختی
+       ========================================================= */
+
+    const progressTable =
+
+        document.getElementById(
+            'progress-table'
+        );
+
+
+
+    progressTable.innerHTML =
+
+        progressItems
+
+            .map(
+
+                item => {
+
+
+                    const code =
+
+                        String(
+                            item.wbs_code || ''
+                        );
+
+                    const linkedExpenseButtons = (item.linked_expenses || []).length
+                        ? item.linked_expenses.map(expense => `
+                            <button type="button"
+                                    class="linked-expense-button rounded bg-indigo-50 px-2 py-1 text-indigo-700 hover:bg-indigo-100"
+                                    data-expense-id="${Number(expense.id)}"
+                                    data-wbs-code="${code}"
+                                    title="نمایش جزئیات هزینه ${Number(expense.id)}">
+                                ردیف ${faNumber(expense.id)}
+                            </button>
+                        `).join(' ')
+                        : '<span class="text-gray-400">—</span>';
+
+
+                    const level =
+
+                        getLevel(
+                            code
+                        );
+
+
+                    const parent =
+
+                        hasChildren(
+                            code,
+                            progressItems
+                        );
+
+
+
+                    /* =========================================
+                       کلاس تورفتگی
+                       ========================================= */
+
+                    let indentClass;
+
+
+                    if (level === 0) {
+
+                        indentClass =
+                            'wbs-indent-0';
+
+                    }
+
+                    else if (level === 1) {
+
+                        indentClass =
+                            'wbs-indent-1';
+
+                    }
+
+                    else if (level === 2) {
+
+                        indentClass =
+                            'wbs-indent-2';
+
+                    }
+
+                    else if (level === 3) {
+
+                        indentClass =
+                            'wbs-indent-3';
+
+                    }
+
+                    else if (level === 4) {
+
+                        indentClass =
+                            'wbs-indent-4';
+
+                    }
+
+                    else if (level === 5) {
+
+                        indentClass =
+                            'wbs-indent-5';
+
+                    }
+
+                    else {
+
+                        indentClass =
+                            'wbs-indent-6';
+
+                    }
+
+
+
+                    /* =========================================
+                       ساخت ردیف
+                       ========================================= */
+
+                    return `
+
+                        <tr
+
+                            data-wbs-row
+
+                            data-wbs-code="${code}"
+
+                            data-wbs-level="${level}"
+
+                            class="
+                                ${parent ? 'wbs-parent-row' : ''}
+                                ${level > 0 ? 'wbs-child-hidden' : ''}
+                            "
+
+                        >
+
+
+                            <!-- ==============================
+                                 کد WBS
+                                 ============================== -->
+
+                            <td class="p-2">
+
+                                <div
+                                    class="
+                                        wbs-code-cell
+                                        ${indentClass}
+                                    "
+                                >
+
+
+                                    ${
+                                        parent
+
+                                        ?
+
+                                        `
+                                        <button
+
+                                            type="button"
+
+                                            class="wbs-toggle"
+
+                                            data-code="${code}"
+
+                                            aria-expanded="false"
+
+                                            title="نمایش زیرمجموعه"
+
+                                        >
+                                            +
+                                        </button>
+                                        `
+
+                                        :
+
+                                        `
+                                        <span
+                                            style="
+                                                display:inline-block;
+                                                width:30px;
+                                            "
+                                        ></span>
+                                        `
+                                    }
+
+
+                                    <span>
+
+                                        ${code}
+
+                                    </span>
+
+
+                                </div>
+
+                            </td>
+
+
+
+                            <td class="p-2">
+                                <div class="flex flex-wrap gap-1">
+                                    ${linkedExpenseButtons}
+                                </div>
+                            </td>
+
+
+                            <!-- ==============================
+                                 شرح فعالیت
+                                 ============================== -->
+
+                            <td class="p-2">
+
+                                ${item.activity || ''}
+
+                            </td>
+
+
+
+                            <!-- ==============================
+                                 وزن
+                                 ============================== -->
+
+                            <td class="p-2">
+
+                                ${faNumber(
+                                    item.weight_percent
+                                )}٪
+
+                            </td>
+
+
+
+                            <!-- ==============================
+                                 پوشش ثبت‌شده
+                                 ============================== -->
+
+                            <td class="p-2">
+
+                                ${faNumber(
+                                    item.coverage_percent
+                                )}٪
+
+                            </td>
+
+
+
+                            <!-- ==============================
+                                 پیشرفت وزنی
+                                 ============================== -->
+
+                            <td
+                                class="
+                                    p-2
+                                    font-semibold
+                                    text-green-700
+                                "
+                            >
+
+                                ${faNumber(
+                                    item.weighted_progress
+                                )}٪
+
+                            </td>
+
+
+                        </tr>
+
+                    `;
+
+                }
+
+            )
+
+            .join('');
+
+
+
+    /* =========================================================
+       تمام ردیف‌های جدول
+       ========================================================= */
+
+    const allRows =
+
+        Array.from(
+
+            progressTable.querySelectorAll(
+                '[data-wbs-row]'
+            )
+
+        );
+
+    const linkedExpenseDialog = document.getElementById('linkedExpenseDialog');
+    const linkedExpenseDetails = document.getElementById('linkedExpenseDetails');
+
+    function showLinkedExpenseDetails(expenseId, wbsCode) {
+        const expense = expenseDetailsByLink.get(`${expenseId}:${wbsCode}`);
+        if (!expense) return;
+
+        const displayNumber = value => faNumber(Number(value) || 0);
+        const fields = [
+            ['ردیف آیتم هزینه', expense.id],
+            ['تاریخ', expense.date],
+            ['شرح', expense.description],
+            ['واحد', expense.unit],
+            ['مقدار', displayNumber(expense.amount)],
+            ['فی (ریال)', displayNumber(expense.unit_price)],
+            ['تخفیف', expense.discount],
+            ['مبلغ کل (ریال)', displayNumber(expense.total_amount)],
+            ['محل استفاده', expense.location],
+            ['توضیحات', expense.notes],
+            ['محل تأمین', expense.source],
+            ['شماره فاکتور', expense.invoice_number],
+            ['وضعیت تسویه', expense.settlement_status],
+            ['پرداخت‌کننده', expense.payer],
+            ['کد WBS مرتبط', wbsCode],
+            ['درصد پوشش این هزینه از این آیتم', `${displayNumber(expense.wbs_coverage_percent)}٪`],
+            ['پرداختی شخصی مدیر', expense.personal_manager_payment ? 'بله' : 'خیر'],
+            ['عدم محاسبه برای مدیر', expense.exclude_manager_calculation ? 'بله' : 'خیر']
+        ];
+
+        linkedExpenseDetails.replaceChildren();
+        fields.forEach(([label, value]) => {
+            const group = document.createElement('div');
+            group.className = 'border-b pb-2';
+            const term = document.createElement('dt');
+            term.className = 'text-xs text-gray-500';
+            term.textContent = label;
+            const detail = document.createElement('dd');
+            detail.className = 'mt-1 font-medium text-gray-800 whitespace-pre-wrap';
+            detail.textContent = value === null || value === undefined || value === '' ? '—' : String(value);
+            group.append(term, detail);
+            linkedExpenseDetails.appendChild(group);
+        });
+
+        if (expense.receipt_image_path) {
+            const group = document.createElement('div');
+            group.className = 'border-b pb-2';
+            const term = document.createElement('dt');
+            term.className = 'text-xs text-gray-500';
+            term.textContent = 'رسید';
+            const detail = document.createElement('dd');
+            detail.className = 'mt-1';
+            const receipt = document.createElement('a');
+            receipt.href = expense.receipt_image_path;
+            receipt.target = '_blank';
+            receipt.rel = 'noopener';
+            receipt.className = 'text-indigo-600 underline';
+            receipt.textContent = 'مشاهده رسید';
+            detail.appendChild(receipt);
+            group.append(term, detail);
+            linkedExpenseDetails.appendChild(group);
+        }
+        linkedExpenseDialog.showModal();
+    }
+
+    progressTable.addEventListener('click', event => {
+        const button = event.target.closest('.linked-expense-button');
+        if (button) showLinkedExpenseDetails(button.dataset.expenseId, button.dataset.wbsCode);
+    });
+
+    document.getElementById('closeLinkedExpenseDialog').addEventListener('click', () => linkedExpenseDialog.close());
+    document.getElementById('closeLinkedExpenseDialogFooter').addEventListener('click', () => linkedExpenseDialog.close());
+
+
+
+    /* =========================================================
+       پیدا کردن تمام زیرمجموعه‌های یک ردیف
+       ========================================================= */
+
+    const getDescendants = parentCode => {
+
+
+        const prefix =
+            String(parentCode) + '.';
+
+
+        return allRows.filter(
+
+            row => {
+
+
+                const code =
+                    row.dataset.wbsCode || '';
+
+
+                return code.startsWith(
+                    prefix
+                );
+
+            }
+
+        );
+
+    };
+
+
+
+    /* =========================================================
+       پیدا کردن فرزندان مستقیم
+       ========================================================= */
+
+    const getDirectChildrenRows =
+        parentCode => {
+
+
+            const parentLevel =
+
+                getLevel(
+                    parentCode
+                );
+
+
+            return allRows.filter(
+
+                row => {
+
+
+                    const code =
+                        row.dataset.wbsCode || '';
+
+
+                    const level =
+
+                        Number(
+                            row.dataset.wbsLevel || 0
+                        );
+
+
+                    return (
+
+                        level ===
+                        parentLevel + 1
+
+                        &&
+
+                        code.startsWith(
+                            String(parentCode) + '.'
+                        )
+
+                    );
+
+                }
+
+            );
+
+        };
+
+
+
+    /* =========================================================
+       باز و بسته کردن شاخه‌ها
+       ========================================================= */
+
+    progressTable
+
+        .querySelectorAll(
+            '.wbs-toggle'
+        )
+
+        .forEach(
+
+            button => {
+
+
+                button.addEventListener(
+
+                    'click',
+
+                    function () {
+
+
+                        const parentCode =
+                            this.dataset.code;
+
+
+                        const expanded =
+
+                            this.getAttribute(
+                                'aria-expanded'
+                            ) === 'true';
+
+
+                        const directChildren =
+
+                            getDirectChildrenRows(
+                                parentCode
+                            );
+
+
+
+                        /* =====================================
+                           بستن شاخه
+                           ===================================== */
+
+                        if (expanded) {
+
+
+                            this.textContent =
+                                '+';
+
+
+                            this.setAttribute(
+                                'aria-expanded',
+                                'false'
+                            );
+
+
+                            const descendants =
+
+                                getDescendants(
+                                    parentCode
+                                );
+
+
+                            descendants.forEach(
+
+                                row => {
+
+
+                                    row.classList.add(
+                                        'wbs-child-hidden'
+                                    );
+
+
+                                    const childButton =
+
+                                        row.querySelector(
+                                            '.wbs-toggle'
+                                        );
+
+
+                                    if (childButton) {
+
+
+                                        childButton.textContent =
+                                            '+';
+
+
+                                        childButton.setAttribute(
+                                            'aria-expanded',
+                                            'false'
+                                        );
+
+                                    }
+
+                                }
+
+                            );
+
+                        }
+
+
+
+                        /* =====================================
+                           باز کردن شاخه
+                           ===================================== */
+
+                        else {
+
+
+                            this.textContent =
+                                '−';
+
+
+                            this.setAttribute(
+                                'aria-expanded',
+                                'true'
+                            );
+
+
+                            directChildren.forEach(
+
+                                row => {
+
+                                    row.classList.remove(
+                                        'wbs-child-hidden'
+                                    );
+
+                                }
+
+                            );
+
+                        }
+
+                    }
+
+                );
+
+            }
+
+        );
+
+
+
+})
+
+
+/* =========================================================
+   خطا در دریافت اطلاعات
+   ========================================================= */
+
+.catch(
+
+    err => {
+
+
+        console.error(err);
+
+
+        document
+            .getElementById(
+                'empty-message'
+            )
+            .classList
+            .remove('hidden');
+
+
+        document
+            .getElementById(
+                'empty-message'
+            )
+            .textContent =
+                'خطا در دریافت اطلاعات پیشرفت پروژه.';
+
+
+    }
+
+);
+
+</script>
+
+{% endblock %}

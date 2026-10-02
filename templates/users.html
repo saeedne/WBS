@@ -1,0 +1,154 @@
+{% extends "layout.html" %}
+
+{% block title %}مدیریت کاربران{% endblock %}
+
+{% block head_extra %}
+<style>
+    .modal { display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.4); align-items:center; justify-content:center; }
+    .modal-content { width:90%; max-width:600px; padding:20px; background:#fff; border-radius:10px; position:relative; }
+    .close-button { float:right; font-size:28px; cursor:pointer; color:#888; }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">مدیریت کاربران</h1>
+    <p class="text-gray-500 text-sm">افزودن، ویرایش و حذف کاربران سیستم</p>
+</header>
+
+<section>
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-3">افزودن کاربر جدید</h2>
+        <form action="/add_user" method="post" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <input type="text" name="username" placeholder="نام کاربری" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
+                <input type="text" name="name" placeholder="نام" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
+                <input type="password" name="password" placeholder="رمز عبور" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
+                <select name="role" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
+                    <option value="user">کاربر عادی</option>
+                    <option value="admin">مدیر</option>
+                </select>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 text-sm">افزودن کاربر</button>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-gray-50"><tr>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">نام</th>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">نام کاربری</th>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">نقش</th>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">دسترسی‌ها</th>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">عملیات</th>
+                </tr></thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for user in users %}
+                    {% if session['user']['username'] == 'admin' or user.username != 'admin' %}
+                    <tr class="hover:bg-gray-100" data-username="{{ user.username }}">
+                        <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ user.name }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-500">{{ user.username }}</td>
+                        <td class="px-6 py-4 text-sm">{{ 'مدیر' if user.role == 'admin' else 'کاربر عادی' }}</td>
+                        <td class="px-6 py-4 text-sm">
+                            {% if user.username != 'admin' or session['user']['username'] == 'admin' %}
+                            <button onclick="showPermissionsModal('{{ user.username }}')" class="text-purple-600 hover:text-purple-900">دسترسی‌ها</button>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm flex gap-3">
+                            <button onclick="showUserLogModal('{{ user.username }}')" class="text-blue-600 hover:text-blue-900">گزارش</button>
+                            {% if user.username != 'admin' or session['user']['username'] == 'admin' %}
+                            <button onclick="showEditModal('{{ user.username }}', {{ user.name|tojson }}, '{{ user.role }}')" class="text-indigo-600 hover:text-indigo-900">ویرایش</button>
+                            {% endif %}
+                            {% if user.username != 'admin' %}
+                            <form action="/delete_user" method="post" onsubmit="return confirm('آیا از حذف کاربر {{ user.name }} مطمئن هستید؟');">
+                                <input type="hidden" name="username" value="{{ user.username }}">
+                                <button type="submit" class="text-red-600 hover:text-red-900">حذف</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<div id="editModal" class="modal"><div class="modal-content">
+    <span class="close-button" onclick="closeModal('editModal')">&times;</span>
+    <h2 class="text-xl font-bold mb-4">ویرایش کاربر</h2>
+    <form action="/edit_user" method="post" class="space-y-3">
+        <input type="hidden" name="username" id="edit_username">
+        <input type="text" id="display_username" disabled class="w-full p-2 border rounded bg-gray-100">
+        <input type="text" id="edit_name" name="name" required class="w-full p-2 border rounded" placeholder="نام">
+        <input type="password" id="edit_password" name="password" required class="w-full p-2 border rounded" placeholder="رمز عبور جدید">
+        <select id="edit_role" name="role" class="w-full p-2 border rounded"><option value="user">کاربر عادی</option><option value="admin">مدیر</option></select>
+        <div class="flex justify-end gap-3"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('editModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
+    </form>
+</div></div>
+
+<div id="permissionsModal" class="modal"><div class="modal-content">
+    <span class="close-button" onclick="closeModal('permissionsModal')">&times;</span>
+    <h2 class="text-xl font-bold mb-2">تنظیم دسترسی‌ها</h2>
+    <div id="permissions-user-info" class="text-sm font-semibold mb-4"></div>
+    <form id="permissions-form" action="/update_permissions" method="post">
+        <input type="hidden" name="username" id="permissions_username">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% set permissions = [('index','ثبت تردد'),('management','مدیریت کارکنان'),('reports','گزارش ترددها'),('users','مدیریت کاربران'),('petty_cash','ثبت هزینه'),('petty_cash_reports','گزارش هزینه'),('daily_worker','ثبت روزمزد'),('daily_worker_reports','گزارش روزمزد'),('financial_records','ثبت مالی'),('financial_reports','گزارش مالی'),('dashboard','داشبورد'),('admin_dashboard','پنل مدیریت'),('facilities','ثبت تأسیسات'),('facilities_reports','گزارش تأسیسات'),('payroll_calculation','محاسبه حقوق'),('project_wbs','ساختار شکست پروژه'),('project_progress','پیشرفت فیزیکی پروژه')] %}
+            {% for key, label in permissions %}
+            <label class="flex gap-2 items-center"><input type="checkbox" name="{{ key }}"><span>{{ label }}</span></label>
+            {% endfor %}
+        </div>
+        <div class="flex justify-end gap-3 mt-4"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('permissionsModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
+    </form>
+</div></div>
+
+<div id="userLogModal" class="modal"><div class="modal-content">
+    <span class="close-button" onclick="closeModal('userLogModal')">&times;</span>
+    <h2 class="text-xl font-bold mb-4">گزارش فعالیت‌ها</h2>
+    <div id="user-log-content"></div>
+    <div class="flex justify-end mt-4"><button onclick="closeModal('userLogModal')" class="bg-gray-400 text-white py-2 px-4 rounded">بستن</button></div>
+</div></div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function showEditModal(username, name, role) {
+    document.getElementById('edit_username').value = username;
+    document.getElementById('display_username').value = username;
+    document.getElementById('edit_name').value = name;
+    document.getElementById('edit_role').value = role;
+    document.getElementById('edit_password').value = '';
+    showModal('editModal');
+}
+async function showPermissionsModal(username) {
+    const form = document.getElementById('permissions-form');
+    document.getElementById('permissions_username').value = username;
+    document.getElementById('permissions-user-info').textContent = `تنظیم دسترسی‌ها برای: ${username}`;
+    form.querySelectorAll('input[type="checkbox"]').forEach(box => box.checked = false);
+    const response = await fetch(`/get_permissions/${encodeURIComponent(username)}`);
+    if (!response.ok) { alert('امکان دریافت دسترسی‌ها وجود ندارد.'); return; }
+    const data = await response.json();
+    Object.entries(data.permissions || {}).forEach(([name, enabled]) => {
+        const box = form.querySelector(`input[name="${name}"]`);
+        if (box) box.checked = Boolean(enabled);
+    });
+    showModal('permissionsModal');
+}
+async function showUserLogModal(username) {
+    const content = document.getElementById('user-log-content');
+    content.textContent = 'در حال بارگذاری…';
+    const response = await fetch(`/get_user_logs/${encodeURIComponent(username)}`);
+    if (!response.ok) { content.textContent = 'امکان دریافت گزارش وجود ندارد.'; showModal('userLogModal'); return; }
+    const logs = await response.json();
+    if (!logs.length) { content.textContent = 'گزارشی یافت نشد.'; showModal('userLogModal'); return; }
+    content.innerHTML = `<table class="w-full text-sm"><thead><tr><th class="text-right">زمان</th><th class="text-right">عملیات</th><th class="text-right">جزئیات</th></tr></thead><tbody>${logs.map(log => `<tr class="border-t"><td class="py-2">${log.timestamp_fa}</td><td>${log.action}</td><td>${log.details || '---'}</td></tr>`).join('')}</tbody></table>`;
+    showModal('userLogModal');
+}
+window.addEventListener('click', event => document.querySelectorAll('.modal').forEach(modal => { if (event.target === modal) closeModal(modal.id); }));
+</script>
+{% endblock %}

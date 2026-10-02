@@ -1,0 +1,658 @@
+{% extends "layout.html" %}
+
+{% block title %}سیستم ورود و خروج{% endblock %}
+
+{% block head_extra %}
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0,0,0);
+        background-color: rgba(0,0,0,0.4);
+    }
+    .modal-content {
+        background-color: #fefefe;
+        margin: 15% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 500px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        position: relative;
+    }
+    .close-button {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+    }
+    .close-button:hover,
+    .close-button:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">سیستم ثبت ورود و خروج کارکنان</h1>
+    <p class="text-gray-500 text-sm">برای ثبت ورود یا خروج، از فرم زیر استفاده کنید.</p>
+</header>
+
+<!-- Time and Date Selector -->
+<div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6 flex flex-col md:flex-row justify-center items-center space-y-4 md:space-y-0 md:space-x-4 md:space-x-reverse">
+    <div class="flex flex-col items-center">
+        <span class="text-xs text-gray-500 mb-1">تاریخ</span>
+        <input type="text" id="main-date-input" value="" class="w-28 p-1 rounded-md text-center text-sm border border-gray-300">
+    </div>
+    <div class="flex flex-col items-center">
+        <span class="text-xs text-gray-500 mb-1">ساعت</span>
+        <select id="main-hour-select" class="w-16 p-1 rounded-md text-center text-sm border border-gray-300"></select>
+    </div>
+    <div class="flex flex-col items-center">
+        <span class="text-xs text-gray-500 mb-1">دقیقه</span>
+        <select id="main-minute-select" class="w-16 p-1 rounded-md text-center text-sm border border-gray-300"></select>
+    </div>
+    <div class="flex flex-col items-center">
+        <span class="text-xs text-gray-500 mb-1">شرایط روز</span>
+        <select id="day-condition-select" class="w-28 p-1 rounded-md text-center text-sm border border-gray-300">
+            <option value="عادی">عادی</option>
+            <option value="شبکار">شبکار</option>
+            <option value="مرخصی">مرخصی</option>
+            <option value="استراحت">استراحت</option>
+        </select>
+    </div>
+</div>
+
+<!-- Main Content -->
+<main class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    <!-- Bulk Entry Card -->
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
+        <h2 class="text-xl font-semibold text-gray-800 mb-3">ثبت ورود/خروج</h2>
+        <form id="bulk-submit-form" action="/bulk_submit" method="post" class="space-y-3">
+            <input type="hidden" name="action" id="bulk-action-input">
+            <input type="hidden" name="condition" id="bulk-condition-input">
+            <div class="bg-white p-3 rounded-lg shadow-sm max-h-60 overflow-y-auto">
+                <!-- Search and Select All -->
+                <div class="border-b border-gray-200 pb-2 mb-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">جستجو:</label>
+                    <input type="text" id="employee-search" placeholder="جستجو بر اساس نام یا شماره پرسنلی" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                    <div class="flex items-center justify-between mt-2">
+                        <label class="flex items-center space-x-2 space-x-reverse cursor-pointer text-sm">
+                            <input type="checkbox" id="select-all" class="form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-gray-800 font-bold">انتخاب همه</span>
+                        </label>
+                    </div>
+                </div>
+                <!-- List of employees -->
+                <div id="employee-list-container">
+                    {% for employee in employees %}
+                    <div class="employee-item flex flex-col sm:flex-row items-start sm:items-center justify-between py-2 border-b last:border-b-0 border-gray-200">
+                        <label class="flex items-center space-x-2 space-x-reverse cursor-pointer mb-2 sm:mb-0 w-full sm:w-auto text-sm">
+                            <input type="checkbox" name="employee_ids" value="{{ employee.employee_id }}" class="employee-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                            <span class="text-gray-800">{{ employee.name }} ({{ employee.employee_id }})</span>
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="flex space-x-3 space-x-reverse mt-3">
+                <button type="button" name="action" value="ورود" id="bulk-entry-btn"
+                        class="w-full bg-green-600 text-white text-sm font-semibold py-2 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300">
+                    ثبت ورود
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner">
+        <h2 class="text-xl font-semibold text-gray-800 mb-3">اطلاعات کلی</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="flex flex-col items-center justify-center bg-white p-3 rounded-lg shadow-sm">
+                <span class="text-gray-600 text-sm">تعداد کل کارکنان:</span>
+                <span id="totalEmployees" class="font-bold text-indigo-600 text-lg mt-1">{{ total_employees }}</span>
+            </div>
+            <div class="flex flex-col items-center justify-center bg-white p-3 rounded-lg shadow-sm">
+                <span class="text-gray-600 text-sm">کارکنان حاضر:</span>
+                <span id="presentEmployees" class="font-bold text-indigo-600 text-lg mt-1">{{ present_employees }}</span>
+            </div>
+            <div class="flex flex-col items-center justify-center bg-white p-3 rounded-lg shadow-sm">
+                <span class="text-gray-600 text-sm">در مرخصی:</span>
+                <span id="vacationEmployees" class="font-bold text-red-500 text-lg mt-1">{{ vacation_count }}</span>
+            </div>
+            <div class="flex flex-col items-center justify-center bg-white p-3 rounded-lg shadow-sm">
+                <span class="text-gray-600 text-sm">در استراحت:</span>
+                <span id="breakEmployees" class="font-bold text-red-500 text-lg mt-1">{{ break_count }}</span>
+            </div>
+        </div>
+        <div class="mt-3">
+            <h3 class="text-lg font-semibold text-gray-700">لیست کارکنان حاضر:</h3>
+            <!-- Filter and Select All for present employees -->
+            <div class="border-b border-gray-200 pb-2 mb-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">جستجو در افراد حاضر:</label>
+                <input type="text" id="present-employee-search" placeholder="جستجو بر اساس نام یا شماره پرسنلی" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                <div class="flex items-center mt-2">
+                    <label class="flex items-center space-x-2 space-x-reverse cursor-pointer text-sm">
+                        <input type="checkbox" id="select-all-present" class="form-checkbox h-4 w-4 text-indigo-600 rounded">
+                        <span class="text-gray-800 font-bold">انتخاب همه</span>
+                    </label>
+                </div>
+            </div>
+            
+            <ul id="present-employees-list" class="list-none mt-2 text-sm space-y-2 max-h-60 overflow-y-auto">
+                {% for employee in present_employees_with_condition %}
+                <li class="present-employee-item flex justify-between items-center text-gray-600" data-employee-id="{{ employee.id }}" data-employee-name="{{ employee.name }}" data-employee-condition="{{ employee.condition }}">
+                    <div class="flex items-center space-x-2 space-x-reverse">
+                        <input type="checkbox" name="present_employee_ids" value="{{ employee.id }}" class="present-employee-checkbox form-checkbox h-4 w-4 text-indigo-600 rounded">
+                        <span class="employee-name-clickable cursor-pointer">
+                            {{ employee.name }}
+                            {% if employee.condition in ['مرخصی', 'استراحت'] %}
+                                <span class="text-red-500">({{ employee.condition }})</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% if employee.last_entry_time %}
+                    <span class="text-xs text-gray-500 ml-1" data-last-entry-time="{{ employee.last_entry_time }}"></span>
+                    {% endif %}
+                </li>
+                {% else %}
+                <li class="text-gray-400">هیچ کارمندی حاضر نیست.</li>
+                {% endfor %}
+            </ul>
+            <button id="present-bulk-exit-btn" class="mt-4 w-full bg-red-600 text-white text-sm font-semibold py-2 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-300">
+                ثبت خروج افراد انتخاب شده
+            </button>
+        </div>
+    </div>
+</main>
+
+<!-- The Modal -->
+<div id="activityModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button">&times;</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-4">ثبت جزئیات فعالیت</h2>
+        <div id="modal-employee-info" class="text-sm font-semibold mb-4"></div>
+        <form id="activity-form" class="space-y-3">
+            <input type="hidden" name="employee_ids" id="modal-employee-id">
+            <div id="modal-alert-message" class="text-red-500 text-sm font-semibold mb-2" style="display:none;">لطفاً حداقل یک مورد از فیلدها را پر کنید.</div>
+            <div>
+                <label for="activity_location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+                <input type="text" id="activity_location" name="activity_location" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div>
+                <label for="activity_description" class="block text-sm font-medium text-gray-700">شرح فعالیت:</label>
+                <textarea id="activity_description" name="activity_description" rows="3" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"></textarea>
+            </div>
+            <div>
+                <label for="activity_amount" class="block text-sm font-medium text-gray-700">مقدار فعالیت:</label>
+                <input type="text" id="activity_amount" name="activity_amount" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            </div>
+            <div class="flex justify-end space-x-3 space-x-reverse mt-4">
+                <button type="button" id="save-activity-btn" class="bg-indigo-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+                    ثبت فعالیت
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const bulkEntryBtn = document.getElementById('bulk-entry-btn');
+        const bulkSubmitForm = document.getElementById('bulk-submit-form');
+        const selectAllCheckbox = document.getElementById('select-all');
+        const employeeCheckboxes = document.querySelectorAll('.employee-checkbox');
+        const hourSelect = document.getElementById('main-hour-select');
+        const minuteSelect = document.getElementById('main-minute-select');
+        const dateInput = document.getElementById('main-date-input');
+        const employeeSearchInput = document.getElementById('employee-search');
+        const allEmployees = Array.from(document.querySelectorAll('.employee-item'));
+        const dayConditionSelect = document.getElementById('day-condition-select');
+
+        // New elements for present employees list
+        const presentEmployeeSearchInput = document.getElementById('present-employee-search');
+        const presentEmployeesList = document.getElementById('present-employees-list');
+        const presentBulkExitBtn = document.getElementById('present-bulk-exit-btn');
+        const allPresentEmployees = Array.from(document.querySelectorAll('.present-employee-item'));
+        const selectAllPresentCheckbox = document.getElementById('select-all-present');
+        const presentCheckboxes = document.querySelectorAll('.present-employee-checkbox');
+
+        // Modal elements
+        const modal = document.getElementById('activityModal');
+        const closeBtn = document.querySelector('.close-button');
+        const activityForm = document.getElementById('activity-form');
+        const modalEmployeeIdInput = document.getElementById('modal-employee-id');
+        const modalEmployeeInfo = document.getElementById('modal-employee-info');
+        const modalAlertMessage = document.getElementById('modal-alert-message');
+        const activityLocationInput = document.getElementById('activity_location');
+        const activityDescriptionInput = document.getElementById('activity_description');
+        const activityAmountInput = document.getElementById('activity_amount');
+        const saveActivityBtn = document.getElementById('save-activity-btn');
+        
+        function showMessage(message, type = 'info') {
+            const messageBox = document.createElement('div');
+            messageBox.className = 'message-box bg-white p-6 rounded-lg shadow-lg text-center';
+            messageBox.innerHTML = `
+                <p class="text-gray-800">${message}</p>
+                <button class="mt-4 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-indigo-700" onclick="this.parentElement.remove()">باشه</button>
+            `;
+            document.body.appendChild(messageBox);
+        }
+        
+        function pad(num) {
+            return num < 10 ? '0' + num : num;
+        }
+
+        function fillTimeDropdowns() {
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+
+            for (let i = 0; i < 24; i++) {
+                const option = document.createElement('option');
+                option.value = pad(i);
+                option.textContent = pad(i);
+                hourSelect.appendChild(option);
+            }
+            hourSelect.value = pad(currentHour);
+
+            for (let i = 0; i < 60; i++) {
+                const option = document.createElement('option');
+                option.value = pad(i);
+                option.textContent = pad(i);
+                minuteSelect.appendChild(option);
+            }
+            minuteSelect.value = pad(currentMinute);
+        }
+
+        function getShamsiDate() {
+            const now = new Date();
+            return `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`; // Placeholder as this should be handled by the datepicker
+        }
+        
+        function toShamsiDate(miladiDateString) {
+            const miladiDate = new Date(miladiDateString);
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            };
+            const shamsiDate = miladiDate.toLocaleDateString('fa-IR', options);
+            const digits = '۰۱۲۳۴۵۶۷۸۹';
+            return shamsiDate.replace(/[0-9]/g, d => digits[d]);
+        }
+
+        // Display the last entry time for present employees
+        const lastEntryTimeSpans = document.querySelectorAll('[data-last-entry-time]');
+        lastEntryTimeSpans.forEach(span => {
+            const miladiTime = span.dataset.lastEntryTime;
+            span.textContent = toShamsiDate(miladiTime);
+        });
+
+        fillTimeDropdowns();
+        dateInput.value = getShamsiDate();
+
+        async function getSelectedEmployeesStatus(idsToCheck) {
+            if (idsToCheck.length === 0) {
+                return { selectedIds: [], statusData: {} };
+            }
+            
+            try {
+                const response = await fetch('/check_status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ employee_ids: idsToCheck })
+                });
+                const statusData = await response.json();
+                return { selectedIds: idsToCheck, statusData };
+            } catch (error) {
+                console.error('Error checking employee status:', error);
+                return null;
+            }
+        }
+        
+        async function processBulkSubmission(action) {
+            const selectedIds = Array.from(document.querySelectorAll('input[name="employee_ids"]:checked'))
+                                    .map(cb => cb.value);
+            
+            if (selectedIds.length === 0) {
+                showMessage('لطفاً حداقل یک کارمند را انتخاب کنید.', 'warning');
+                return;
+            }
+
+            const result = await getSelectedEmployeesStatus(selectedIds);
+            if (!result) return;
+            
+            const { selectedIds: checkedIds, statusData } = result;
+            let finalIdsToSubmit = [];
+            let confirmationNeeded = false;
+            let confirmationMessage = '';
+
+            for (const id of checkedIds) {
+                const checkbox = document.querySelector(`input[name="employee_ids"][value="${id}"]`);
+                const employeeName = checkbox.nextElementSibling.textContent.split('(')[0].trim();
+                const currentStatus = statusData[id];
+
+                if (action === 'ورود' && currentStatus === 'ورود') {
+                    confirmationNeeded = true;
+                    confirmationMessage += `کارمند "${employeeName}" در حال حاضر حاضر است. آیا می‌خواهید ورود او را دوباره ثبت کنید؟\n`;
+                } else {
+                    finalIdsToSubmit.push(id);
+                }
+            }
+
+            if (confirmationNeeded) {
+                const userConfirmed = confirm(confirmationMessage);
+                if (userConfirmed) {
+                    finalIdsToSubmit = checkedIds;
+                }
+            }
+            
+            if (finalIdsToSubmit.length > 0) {
+                const newForm = document.createElement('form');
+                newForm.action = '/bulk_submit';
+                newForm.method = 'post';
+                newForm.style.display = 'none';
+                document.body.appendChild(newForm);
+
+                const actionInput = document.createElement('input');
+                actionInput.type = 'hidden';
+                actionInput.name = 'action';
+                actionInput.value = action;
+                newForm.appendChild(actionInput);
+                
+                const conditionInput = document.createElement('input');
+                conditionInput.type = 'hidden';
+                conditionInput.name = 'condition';
+                conditionInput.value = dayConditionSelect.value;
+                newForm.appendChild(conditionInput);
+                
+                const hour = hourSelect.value;
+                const minute = minuteSelect.value;
+                const date = dateInput.value;
+
+                finalIdsToSubmit.forEach(id => {
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'employee_ids';
+                    idInput.value = id;
+                    newForm.appendChild(idInput);
+                    
+                    const timeHiddenInput = document.createElement('input');
+                    timeHiddenInput.type = 'hidden';
+                    timeHiddenInput.name = 'timestamps';
+                    timeHiddenInput.value = `${date} ${hour}:${minute}:00`;
+                    newForm.appendChild(timeHiddenInput);
+                });
+                
+                newForm.submit();
+            } else {
+                showMessage('هیچ کارمندی برای ثبت انتخاب نشد.');
+            }
+        }
+        
+        selectAllCheckbox.addEventListener('change', (event) => {
+            employeeCheckboxes.forEach(checkbox => {
+                checkbox.checked = event.target.checked;
+            });
+        });
+        
+        bulkEntryBtn.addEventListener('click', () => processBulkSubmission('ورود'));
+        
+        employeeSearchInput.addEventListener('keyup', (event) => {
+            const searchTerm = event.target.value.toLowerCase();
+            allEmployees.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+
+        // Filter functionality for present employees
+        presentEmployeeSearchInput.addEventListener('keyup', (event) => {
+            const searchTerm = event.target.value.toLowerCase();
+            allPresentEmployees.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+        
+        // Select all for present employees
+        selectAllPresentCheckbox.addEventListener('change', (event) => {
+            const visiblePresentEmployees = allPresentEmployees.filter(item => item.style.display !== 'none');
+            visiblePresentEmployees.forEach(item => {
+                const checkbox = item.querySelector('.present-employee-checkbox');
+                checkbox.checked = event.target.checked;
+            });
+        });
+
+
+        // Event listener for clicking on a present employee's name to open the modal
+        presentEmployeesList.addEventListener('click', (event) => {
+            const employeeNameClickable = event.target.closest('.employee-name-clickable');
+            if (employeeNameClickable) {
+                const employeeItem = employeeNameClickable.closest('.present-employee-item');
+                const employeeId = employeeItem.dataset.employeeId;
+                const employeeName = employeeItem.dataset.employeeName;
+                const employeeCondition = employeeItem.dataset.employeeCondition;
+                const hour = hourSelect.value;
+                const minute = minuteSelect.value;
+                const date = dateInput.value;
+                const timestamp = `${date} ${hour}:${minute}:00`;
+
+                // Set values in the modal form
+                modalEmployeeIdInput.value = employeeId;
+                modalEmployeeInfo.innerHTML = `
+                    <p>کارمند: <span class="font-bold text-indigo-600">${employeeName}</span></p>
+                    <p>زمان خروج: <span class="font-bold text-indigo-600">${timestamp}</span></p>
+                `;
+                // Clear previous form values and hide alert message
+                activityLocationInput.value = '';
+                activityDescriptionInput.value = '';
+                activityAmountInput.value = '';
+                modalAlertMessage.style.display = 'none';
+
+                // Check if there are saved activities in a temporary table and pre-fill the form
+                fetch(`/get_temp_activity/${employeeId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success' && data.activity) {
+                            activityLocationInput.value = data.activity.activity_location || '';
+                            activityDescriptionInput.value = data.activity.activity_description || '';
+                            activityAmountInput.value = data.activity.activity_amount || '';
+                        }
+                    })
+                    .catch(error => console.error('Error fetching temp activity:', error));
+
+                modal.style.display = 'block';
+            }
+        });
+
+        // Close modal when the close button is clicked
+        closeBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+
+        // Close modal when clicking outside of it
+        window.addEventListener('click', (event) => {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // Handle activity submission
+        saveActivityBtn.addEventListener('click', () => {
+            const employeeId = modalEmployeeIdInput.value;
+            const activityLocation = activityLocationInput.value.trim();
+            const activityDescription = activityDescriptionInput.value.trim();
+            const activityAmount = activityAmountInput.value.trim();
+
+            if (!activityLocation && !activityDescription && !activityAmount) {
+                modalAlertMessage.style.display = 'block';
+                return;
+            }
+            modalAlertMessage.style.display = 'none';
+            
+            const formData = new FormData();
+            formData.append('employee_ids', employeeId);
+            formData.append('activity_location', activityLocation);
+            formData.append('activity_description', activityDescription);
+            formData.append('activity_amount', activity_amount);
+
+            fetch('/save_activity', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showMessage('اطلاعات فعالیت با موفقیت ثبت شد.');
+                } else {
+                    showMessage(data.message, 'error');
+                }
+                modal.style.display = 'none';
+            })
+            .catch(error => {
+                console.error('Error saving activity:', error);
+                showMessage('خطا در ذخیره جزئیات فعالیت.', 'error');
+            });
+        });
+
+        presentBulkExitBtn.addEventListener('click', async () => {
+            const selectedEmployees = Array.from(presentCheckboxes).filter(cb => cb.checked);
+            const employeeIds = selectedEmployees.map(cb => cb.value);
+
+            if (employeeIds.length === 0) {
+                showMessage('لطفا حداقل یک کارمند حاضر را انتخاب کنید.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/check_temp_activities', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ employee_ids: employeeIds })
+                });
+                const result = await response.json();
+                
+                if (result.status === 'ok') {
+                    const hour = hourSelect.value;
+                    const minute = minuteSelect.value;
+                    const date = dateInput.value;
+                    const timestamp = `${date} ${hour}:${minute}:00`;
+
+                    const newForm = document.createElement('form');
+                    newForm.action = '/bulk_submit';
+                    newForm.method = 'post';
+                    newForm.style.display = 'none';
+                    document.body.appendChild(newForm);
+                    
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'خروج';
+                    newForm.appendChild(actionInput);
+
+                    employeeIds.forEach(id => {
+                        const idInput = document.createElement('input');
+                        idInput.type = 'hidden';
+                        idInput.name = 'employee_ids';
+                        idInput.value = id;
+                        newForm.appendChild(idInput);
+                        
+                        const timeHiddenInput = document.createElement('input');
+                        timeHiddenInput.type = 'hidden';
+                        timeHiddenInput.name = 'timestamps';
+                        timeHiddenInput.value = timestamp;
+                        newForm.appendChild(timeHiddenInput);
+                    });
+
+                    newForm.submit();
+                } else if (result.status === 'missing_data') {
+                     const missingEmployees = result.missing_employees.map(emp => `${emp.name} (${emp.id})`).join('، ');
+                     // Use window.confirm for a modal-style alert
+                     if (confirm(`برای کارمندان زیر اطلاعات فعالیتی ثبت نشده است:\n${missingEmployees}\nآیا می‌خواهید بدون ثبت فعالیت، خروج را ادامه دهید؟`)) {
+                        const hour = hourSelect.value;
+                        const minute = minuteSelect.value;
+                        const date = dateInput.value;
+                        const timestamp = `${date} ${hour}:${minute}:00`;
+                        
+                        const newForm = document.createElement('form');
+                        newForm.action = '/bulk_submit';
+                        newForm.method = 'post';
+                        newForm.style.display = 'none';
+                        document.body.appendChild(newForm);
+                        
+                        const actionInput = document.createElement('input');
+                        actionInput.type = 'hidden';
+                        actionInput.name = 'action';
+                        actionInput.value = 'خروج';
+                        newForm.appendChild(actionInput);
+
+                        employeeIds.forEach(id => {
+                            const idInput = document.createElement('input');
+                            idInput.type = 'hidden';
+                            idInput.name = 'employee_ids';
+                            idInput.value = id;
+                            newForm.appendChild(idInput);
+                            
+                            const timeHiddenInput = document.createElement('input');
+                            timeHiddenInput.type = 'hidden';
+                            timeHiddenInput.name = 'timestamps';
+                            timeHiddenInput.value = timestamp;
+                            newForm.appendChild(timeHiddenInput);
+                        });
+
+                        newForm.submit();
+                     }
+                }
+            } catch (error) {
+                console.error('Error checking temp activities:', error);
+                showMessage('خطا در بررسی اطلاعات فعالیت موقت.', 'error');
+            }
+        });
+
+
+        $(document).ready(function() {
+            kamaDatepicker('main-date-input', {
+                forceSelected: true,
+                buttonsColor: "red",
+                forceFarsiDigits: true,
+                markToday:true,
+                markHolidays:true,
+                gotoToday:true,
+                closeAfterSelect:true
+            });
+            dateInput.value = new Date().toLocaleDateString('fa-IR-u-nu-latn').replace(/([۰-۹])/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+        });
+    });
+</script>
+{% endblock %}

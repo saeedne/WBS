@@ -1,0 +1,139 @@
+{% extends "layout.html" %}
+
+{% block title %}ثبت دستمزد روزانه{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/persian-datepicker.min.css">
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">فرم ثبت دستمزد روزانه</h1>
+    <p class="text-gray-500 text-sm">لطفاً اطلاعات مربوط به کارگران روزمزد را وارد کنید.</p>
+</header>
+
+<form action="/add_daily_wage" method="post" class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <label for="date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+            <input type="text" id="date_fa" name="date_fa" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   placeholder="1404/01/01">
+        </div>
+        <div>
+            <label for="supervisor_name" class="block text-sm font-medium text-gray-700">نام سرکارگر:</label>
+            <input type="text" id="supervisor_name" name="supervisor_name" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="supervisor-names">
+            <datalist id="supervisor-names">
+                {% for supervisor in supervisors %}
+                <option value="{{ supervisor }}"></option>
+                {% endfor %}
+            </datalist>
+        </div>
+        <div>
+            <label for="daily_wage" class="block text-sm font-medium text-gray-700">دستمزد روزانه:</label>
+            <input type="text" id="daily_wage" name="daily_wage" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+            <label for="number_of_people" class="block text-sm font-medium text-gray-700">تعداد نفرات:</label>
+            <input type="number" id="number_of_people" name="number_of_people" required value="1" min="1"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+            <label for="transportation_cost" class="block text-sm font-medium text-gray-700">مبلغ ایاب و ذهاب:</label>
+            <input type="text" id="transportation_cost" name="transportation_cost" value="0"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+        <div>
+            <label for="total_amount" class="block text-sm font-medium text-gray-700">مبلغ کل:</label>
+            <input type="text" id="total_amount" name="total_amount"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-gray-100"
+                   readonly>
+        </div>
+        <div class="md:col-span-2">
+            <label for="location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+            <input type="text" id="location" name="location"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="location-list">
+            <datalist id="location-list">
+                {% for location in locations %}
+                <option value="{{ location }}"></option>
+                {% endfor %}
+            </datalist>
+        </div>
+    </div>
+    
+    <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+        ثبت دستمزد
+    </button>
+</form>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/persian-date.min.js"></script>
+<script src="/static/persian-datepicker.min.js"></script>
+<script>
+    function formatNumber(number) {
+        return new Intl.NumberFormat('fa-IR').format(number);
+    }
+
+    function removeNumberFormatting(string) {
+        return string.replace(/,/g, '');
+    }
+
+    function calculateTotalAmount() {
+        const dailyWage = parseInt(removeNumberFormatting(document.getElementById('daily_wage').value)) || 0;
+        const numberOfPeople = parseInt(document.getElementById('number_of_people').value) || 0;
+        const transportationCost = parseInt(removeNumberFormatting(document.getElementById('transportation_cost').value)) || 0;
+        const totalAmount = (dailyWage * numberOfPeople) + transportationCost;
+        document.getElementById('total_amount').value = formatNumber(totalAmount);
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        $("#date_fa").pDatepicker({
+            initialValue: false,
+            format: 'YYYY/MM/DD',
+            autoClose: true
+        });
+
+        const dailyWageInput = document.getElementById('daily_wage');
+        const numberOfPeopleInput = document.getElementById('number_of_people');
+        const transportationCostInput = document.getElementById('transportation_cost');
+        const totalAmountInput = document.getElementById('total_amount');
+
+        dailyWageInput.addEventListener('input', calculateTotalAmount);
+        numberOfPeopleInput.addEventListener('input', calculateTotalAmount);
+        transportationCostInput.addEventListener('input', calculateTotalAmount);
+
+        // Format number on input and blur
+        function handleNumberInput(event) {
+            let value = event.target.value.replace(/,/g, '');
+            if (!isNaN(value) && value !== '') {
+                event.target.value = formatNumber(value);
+            }
+        }
+
+        dailyWageInput.addEventListener('input', handleNumberInput);
+        transportationCostInput.addEventListener('input', handleNumberInput);
+        
+        // Prevent manual change of total amount unless double-clicked
+        totalAmountInput.addEventListener('dblclick', function() {
+            this.readOnly = false;
+            this.classList.remove('bg-gray-100');
+            this.value = removeNumberFormatting(this.value);
+            this.focus();
+        });
+
+        totalAmountInput.addEventListener('blur', function() {
+            this.readOnly = true;
+            this.classList.add('bg-gray-100');
+            this.value = formatNumber(removeNumberFormatting(this.value));
+        });
+
+        calculateTotalAmount();
+    });
+</script>
+{% endblock %}

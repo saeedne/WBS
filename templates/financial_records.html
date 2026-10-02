@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+
+{% block title %}ثبت مالی{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+<script src="/static/kamadatepicker.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">ثبت درآمد و هزینه</h1>
+    <p class="text-gray-500 text-sm">برای ثبت فعالیت‌های مالی از فرم‌های زیر استفاده کنید.</p>
+</header>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="bg-gray-50 p-6 rounded-lg shadow-inner">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">ثبت درآمد</h2>
+        <form action="/add_income" method="post" class="space-y-4">
+            <div>
+                <label for="income_date" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                <input type="text" id="income_date" name="date_fa" required class="w-full p-2 rounded-lg border border-gray-300 text-sm" data-jdp>
+            </div>
+            <div>
+                <label for="income_amount" class="block text-sm font-medium text-gray-700">مبلغ (ریال):</label>
+                <input type="number" id="income_amount" name="amount" required class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="income_description" class="block text-sm font-medium text-gray-700">شرح:</label>
+                <input type="text" id="income_description" name="description" class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="income_source" class="block text-sm font-medium text-gray-700">منبع:</label>
+                <input type="text" id="income_source" name="source" class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="income_notes" class="block text-sm font-medium text-gray-700">توضیحات:</label>
+                <textarea id="income_notes" name="notes" rows="2" class="w-full p-2 rounded-lg border border-gray-300 text-sm"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-green-600 text-white font-semibold py-2 rounded-lg shadow-md">
+                ثبت درآمد
+            </button>
+        </form>
+    </div>
+
+    <div class="bg-gray-50 p-6 rounded-lg shadow-inner">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">ثبت هزینه</h2>
+        <form action="/add_expense" method="post" class="space-y-4">
+            <div>
+                <label for="expense_date" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                <input type="text" id="expense_date" name="date_fa" required class="w-full p-2 rounded-lg border border-gray-300 text-sm" data-jdp>
+            </div>
+            <div>
+                <label for="expense_amount" class="block text-sm font-medium text-gray-700">مبلغ (ریال):</label>
+                <input type="number" id="expense_amount" name="amount" required class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="expense_description" class="block text-sm font-medium text-gray-700">شرح:</label>
+                <input type="text" id="expense_description" name="description" class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="expense_category" class="block text-sm font-medium text-gray-700">دسته بندی:</label>
+                <input type="text" id="expense_category" name="category" class="w-full p-2 rounded-lg border border-gray-300 text-sm">
+            </div>
+            <div>
+                <label for="expense_notes" class="block text-sm font-medium text-gray-700">توضیحات:</label>
+                <textarea id="expense_notes" name="notes" rows="2" class="w-full p-2 rounded-lg border border-gray-300 text-sm"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-red-600 text-white font-semibold py-2 rounded-lg shadow-md">
+                ثبت هزینه
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        kamaDatepicker('income_date', { 
+            buttonsColor: "red",
+            forceSelected: true,
+            forceFarsiDigits: true
+        });
+        kamaDatepicker('expense_date', { 
+            buttonsColor: "red",
+            forceSelected: true,
+            forceFarsiDigits: true
+        });
+    });
+</script>
+{% endblock %}

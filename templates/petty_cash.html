@@ -1,0 +1,874 @@
+{% extends "layout.html" %}
+
+{% block title %}ثبت هزینه{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Add some basic styling for better readability */
+    input[readonly] {
+        cursor: not-allowed;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">فرم ثبت هزینه</h1>
+    <p class="text-gray-500 text-sm">لطفاً اطلاعات مربوط به هزینه را وارد کنید.</p>
+</header>
+
+<form id="petty_cash_form" action="/add_petty_cash" method="post" enctype="multipart/form-data" class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <div>
+            <label for="date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+            <input type="text" id="date_fa" name="date_fa" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   placeholder="1404/01/01">
+        </div>
+
+        <div>
+            <label for="description" class="block text-sm font-medium text-gray-700">شرح:</label>
+            <input type="text" id="description" name="description" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="description-list">
+            <datalist id="description-list"></datalist>
+        </div>
+
+        <div>
+            <label for="unit" class="block text-sm font-medium text-gray-700">واحد:</label>
+            <input type="text" id="unit" name="unit"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="unit-list">
+            <datalist id="unit-list"></datalist>
+        </div>
+
+        <div>
+            <label for="amount" class="block text-sm font-medium text-gray-700">مقدار:</label>
+            <input type="number" id="amount" name="amount" step="any" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+
+        <div>
+            <label for="unit_price" class="block text-sm font-medium text-gray-700">فی (ریال):</label>
+            <input type="number" id="unit_price" name="unit_price" step="any" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+
+        <div>
+            <label for="discount" class="block text-sm font-medium text-gray-700">تخفیف (درصد یا عدد):</label>
+            <input type="text" id="discount" name="discount"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   placeholder="مثال: 10% یا 100000">
+        </div>
+
+        <div class="md:col-span-1">
+            <label for="total_amount" class="block text-sm font-medium text-gray-700">مبلغ کل (ریال):</label>
+            <input type="text" id="total_amount" name="total_amount"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-gray-100"
+                   readonly>
+        </div>
+
+        <div>
+            <label for="location" class="block text-sm font-medium text-gray-700">محل استفاده:</label>
+            <input type="text" id="location" name="location"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="location-list">
+            <datalist id="location-list"></datalist>
+        </div>
+
+        <div>
+            <label for="source" class="block text-sm font-medium text-gray-700">محل تامین:</label>
+            <input type="text" id="source" name="source"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                   list="source-list">
+            <datalist id="source-list"></datalist>
+        </div>
+
+        <div>
+            <label for="notes" class="block text-sm font-medium text-gray-700">توضیحات:</label>
+            <textarea id="notes" name="notes" rows="3"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"></textarea>
+        </div>
+
+        <div>
+            <label for="invoice_number" class="block text-sm font-medium text-gray-700">شماره فاکتور:</label>
+            <input type="text" id="invoice_number" name="invoice_number"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+
+        <div>
+            <label for="settlement_status" class="block text-sm font-medium text-gray-700">وضعیت تسویه:</label>
+            <select id="settlement_status" name="settlement_status" required
+                    class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <option value="تسویه شده">تسویه شده</option>
+                <option value="تسویه نشده">تسویه نشده</option>
+            </select>
+        </div>
+
+        <div>
+            <label for="payer" class="block text-sm font-medium text-gray-700">پرداخت کننده:</label>
+            <select id="payer" name="payer" required
+                    class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                {% for user in users %}
+                    {% if user.username != 'admin' or session['user']['username'] == 'admin' %}
+                        <option value="{{ user.name }}" {% if session['user']['name'] == user.name %}selected{% endif %}>{{ user.name }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="md:col-span-2">
+            <label for="wbs_link_count" class="block text-sm font-medium text-gray-700">تعداد بخشهای مرتبط با ساختار شکست:</label>
+            <div class="flex gap-2">
+                <input type="number" id="wbs_link_count" name="wbs_link_count" min="0" step="1" value="0"
+                       class="w-40 p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                <button type="button" id="open_wbs_dialog" class="px-4 rounded-lg bg-indigo-600 text-white">تنظیم ارتباط‌ها</button>
+            </div>
+            <p id="wbs_link_hint" class="text-xs text-gray-500 mt-1">۰ یعنی بدون ارتباط با ساختار شکست.</p>
+        </div>
+
+        <div class="md:col-span-2 flex flex-col sm:flex-row sm:items-center gap-4 pt-2">
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                <input type="checkbox" name="personal_manager_payment" value="1"
+                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <span>پرداختی شخصی مدیر</span>
+            </label>
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                <input type="checkbox" name="exclude_manager_calculation" value="1"
+                       class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <span>عدم محاسبه برای مدیر</span>
+            </label>
+        </div>
+
+        <div class="md:col-span-3">
+            <label for="receipt_image" class="block text-sm font-medium text-gray-700">عکس رسید:</label>
+            <input type="file"
+                   id="receipt_image"
+                   name="receipt_image"
+                   accept="image/jpeg,image/png,image/bmp,application/pdf"
+                   capture="environment"
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+        </div>
+
+    </div>
+
+    <button type="submit"
+            class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300">
+        ثبت هزینه
+    </button>
+</form>
+
+<dialog id="wbs_dialog" class="w-[min(96vw,900px)] max-h-[85vh] rounded-xl p-0 shadow-2xl backdrop:bg-black/60">
+    <div class="p-5">
+        <h2 class="text-xl font-bold mb-2">ارتباط با ساختار شکست</h2>
+        <p class="text-sm text-gray-600 mb-4">برای هر ردیف، بخش و درصد پوشش را مشخص کنید. درصد انجام‌شدهٔ فعلی از پیشرفت پروژه خوانده می‌شود.</p>
+        <div id="wbs_rows" class="space-y-3 max-h-[55vh] overflow-y-auto"></div>
+        <div class="flex justify-end gap-2 mt-5">
+            <button type="button" id="cancel_wbs_dialog" class="px-4 py-2 rounded bg-gray-200">بستن</button>
+            <button type="button" id="save_wbs_dialog" class="px-4 py-2 rounded bg-indigo-600 text-white">تأیید ارتباط‌ها</button>
+        </div>
+    </div>
+</dialog>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+<script src="/static/kamadatepicker.min.js"></script>
+
+<script>
+    // تابع کمکی برای تبدیل عدد به صورت فارسی
+    function formatNumber(number) {
+        if (typeof number !== 'number' || isNaN(number)) {
+            return '';
+        }
+
+        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+
+    // تابع کمکی برای حذف کاما از رشته
+    function removeNumberFormatting(string) {
+        if (string === null || string === undefined) {
+            return '';
+        }
+
+        return string.toString().replace(/,/g, '');
+    }
+
+
+    // تابع محاسبه و بروزرسانی مبلغ کل
+    function calculateTotalAmount() {
+        const amountInput = $('#amount');
+        const unitPriceInput = $('#unit_price');
+        const discountInput = $('#discount');
+        const totalAmountInput = $('#total_amount');
+
+        let amount = parseFloat(amountInput.val()) || 0;
+        let unitPrice = parseFloat(unitPriceInput.val()) || 0;
+        let totalAmount = amount * unitPrice;
+
+        const discountValue = discountInput.val();
+
+        if (discountValue) {
+            if (discountValue.includes('%')) {
+                const discountPercent =
+                    parseFloat(
+                        removeNumberFormatting(discountValue).replace('%', '')
+                    ) || 0;
+
+                totalAmount =
+                    totalAmount -
+                    (totalAmount * (discountPercent / 100));
+
+            } else {
+                const discountFixed =
+                    parseFloat(removeNumberFormatting(discountValue)) || 0;
+
+                totalAmount = totalAmount - discountFixed;
+            }
+        }
+
+        totalAmountInput.val(formatNumber(totalAmount));
+    }
+
+
+    $(document).ready(function() {
+
+        kamaDatepicker('date_fa', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday: true,
+            markHolidays: true,
+            gotoToday: true,
+            closeAfterSelect: true
+        });
+
+
+        const amountInput = $('#amount');
+        const unitPriceInput = $('#unit_price');
+        const discountInput = $('#discount');
+        const totalAmountInput = $('#total_amount');
+
+        amountInput.on('input', calculateTotalAmount);
+        unitPriceInput.on('input', calculateTotalAmount);
+        discountInput.on('input', calculateTotalAmount);
+
+
+        // Make total_amount editable on double click
+        totalAmountInput.prop('readonly', true);
+        totalAmountInput.addClass('bg-gray-100');
+
+
+        // Double-click to enable editing and remove formatting
+        totalAmountInput.on('dblclick', function() {
+            $(this).prop('readonly', false);
+            $(this).removeClass('bg-gray-100');
+            $(this).val(removeNumberFormatting($(this).val()));
+            $(this).focus();
+        });
+
+
+        // Re-apply formatting and make readonly on blur
+        totalAmountInput.on('blur', function() {
+            const unformattedValue = removeNumberFormatting($(this).val());
+            const formattedValue = formatNumber(parseInt(unformattedValue));
+
+            $(this).val(formattedValue);
+            $(this).prop('readonly', true);
+            $(this).addClass('bg-gray-100');
+        });
+
+
+        const wbsDialog = document.getElementById('wbs_dialog');
+        const wbsRows = document.getElementById('wbs_rows');
+        const countInput = document.getElementById('wbs_link_count');
+        const wbsHint = document.getElementById('wbs_link_hint');
+        let wbsOptions = [];
+        let progressByCode = {};
+        let wbsConfirmedCount = 0;
+
+        Promise.all([
+            fetch('/api/project_wbs_options').then(response => {
+                if (!response.ok) throw new Error('فهرست ساختار شکست بارگذاری نشد.');
+                return response.json();
+            }),
+            fetch('/api/project_progress_data').then(response => {
+                if (!response.ok) throw new Error('اطلاعات پیشرفت بارگذاری نشد.');
+                return response.json();
+            })
+        ]).then(([options, progress]) => {
+            wbsOptions = options;
+            (progress.items || []).forEach(item => {
+                progressByCode[item.wbs_code] = Number(item.coverage_percent) || 0;
+            });
+        }).catch(error => {
+            console.error(error);
+            wbsHint.textContent = 'بارگذاری ساختار شکست با خطا روبه‌رو شد. صفحه را تازه‌سازی کنید.';
+        });
+
+        function buildWbsRows() {
+            const count = Number(countInput.value);
+            if (!Number.isInteger(count) || count < 0) {
+                countInput.setCustomValidity('تعداد باید یک عدد صحیح و صفر یا بیشتر باشد.');
+                countInput.reportValidity();
+                return false;
+            }
+            countInput.setCustomValidity('');
+            if (count === 0) {
+                wbsRows.replaceChildren();
+                wbsConfirmedCount = 0;
+                wbsHint.textContent = 'بدون ارتباط با ساختار شکست';
+                return true;
+            }
+            if (!wbsOptions.length) {
+                wbsHint.textContent = 'فهرست ساختار شکست خالی است یا هنوز بارگذاری نشده.';
+                return false;
+            }
+            if (count > wbsOptions.length) {
+                wbsHint.textContent = `حداکثر ${wbsOptions.length} بخش متفاوت در ساختار شکست وجود دارد.`;
+                return false;
+            }
+
+            wbsRows.replaceChildren();
+            for (let index = 0; index < count; index++) {
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-1 md:grid-cols-3 gap-3 items-end border rounded-lg p-3';
+
+                const selectLabel = document.createElement('label');
+                selectLabel.className = 'text-sm';
+                selectLabel.append(`بخش ساختار شکست ${index + 1}`);
+                const select = document.createElement('select');
+                select.name = 'wbs_code[]';
+                select.setAttribute('form', 'petty_cash_form');
+                select.required = true;
+                select.className = 'block w-full p-2 border rounded text-sm';
+                select.add(new Option('انتخاب بخش', ''));
+                wbsOptions.forEach(item => {
+                    const title = `${item.wbs_code} - ${item.activity}${item.unit ? ` (${item.unit})` : ''}`;
+                    select.add(new Option(title, item.wbs_code));
+                });
+                selectLabel.appendChild(select);
+
+                const coverageLabel = document.createElement('label');
+                coverageLabel.className = 'text-sm';
+                coverageLabel.append('درصد پوشش این هزینه از آیتم:');
+                const coverage = document.createElement('input');
+                coverage.type = 'number';
+                coverage.name = 'wbs_coverage_percent[]';
+                coverage.setAttribute('form', 'petty_cash_form');
+                coverage.min = '0';
+                coverage.max = '100';
+                coverage.step = '0.01';
+                coverage.value = '0';
+                coverage.required = true;
+                coverage.className = 'block w-full p-2 border rounded text-sm';
+                coverageLabel.appendChild(coverage);
+
+                const progress = document.createElement('p');
+                progress.className = 'text-sm text-gray-700';
+                progress.textContent = 'درصد انجام‌شده فعلی: —';
+                select.addEventListener('change', () => {
+                    progress.textContent = `درصد انجام‌شده فعلی: ${progressByCode[select.value] ?? 0}%`;
+                });
+                row.append(selectLabel, coverageLabel, progress);
+                wbsRows.appendChild(row);
+            }
+            return true;
+        }
+
+        document.getElementById('open_wbs_dialog').addEventListener('click', () => {
+            if (buildWbsRows() && Number(countInput.value) > 0) wbsDialog.showModal();
+        });
+        document.getElementById('cancel_wbs_dialog').addEventListener('click', () => wbsDialog.close());
+        document.getElementById('save_wbs_dialog').addEventListener('click', () => {
+            const selects = [...wbsRows.querySelectorAll('select')];
+            const codes = selects.map(select => select.value);
+            if (codes.some(code => !code) || new Set(codes).size !== codes.length) {
+                alert('برای هر ردیف یک بخش متفاوت انتخاب کنید.');
+                return;
+            }
+            const inputs = [...wbsRows.querySelectorAll('input[type="number"]')];
+            if (inputs.some(input => input.value === '' || Number(input.value) < 0 || Number(input.value) > 100)) {
+                alert('درصد پوشش باید بین ۰ تا ۱۰۰ باشد.');
+                return;
+            }
+            wbsConfirmedCount = selects.length;
+            wbsHint.textContent = `${wbsConfirmedCount} ارتباط آماده ثبت است.`;
+            wbsDialog.close();
+        });
+        document.getElementById('petty_cash_form').addEventListener('submit', event => {
+            if (Number(countInput.value) !== wbsConfirmedCount) {
+                event.preventDefault();
+                alert('ابتدا ارتباط‌های ساختار شکست را تنظیم و تأیید کنید.');
+            }
+        });
+
+        // Autocomplete functionality
+        const fieldsToAutocomplete = [
+            'description',
+            'unit',
+            'location',
+            'source'
+        ];
+
+        fieldsToAutocomplete.forEach(field => {
+
+            fetch(`/autocomplete/petty_cash_field/${field}`)
+                .then(response => response.json())
+                .then(data => {
+
+                    const datalist = $(`#${field}-list`);
+                    datalist.empty();
+
+                    data.forEach(item => {
+                        const option = document.createElement('option');
+                        option.value = item;
+                        datalist.append(option);
+                    });
+
+                })
+                .catch(error =>
+                    console.error(
+                        `Error fetching autocomplete data for ${field}:`,
+                        error
+                    )
+                );
+        });
+
+
+        const MAX_IMAGE_BYTES = 100 * 1024;
+        const PDF_WARNING_BYTES = 200 * 1024;
+
+
+        function formatKilobytes(bytes) {
+            return (bytes / 1024).toFixed(1);
+        }
+
+
+        function readImageDimensions(file) {
+            return new Promise((resolve, reject) => {
+
+                const image = new Image();
+                const objectUrl = URL.createObjectURL(file);
+
+                image.onload = () => {
+                    URL.revokeObjectURL(objectUrl);
+
+                    resolve({
+                        width: image.naturalWidth,
+                        height: image.naturalHeight
+                    });
+                };
+
+                image.onerror = () => {
+                    URL.revokeObjectURL(objectUrl);
+                    reject(new Error('invalid image'));
+                };
+
+                image.src = objectUrl;
+            });
+        }
+
+
+        /*
+         * ============================================================
+         * فشرده سازی عکس تا حداکثر 100 کیلوبایت
+         * ============================================================
+         *
+         * منطق:
+         *
+         * 1- اگر عکس از قبل <= 100KB باشد، بدون تغییر برگردانده می‌شود.
+         *
+         * 2- ابتدا ابعاد عکس دستکاری نمی‌شود و فقط کیفیت JPEG
+         *    کاهش پیدا می‌کند.
+         *
+         * 3- اگر با کاهش کیفیت به زیر 100KB نرسیدیم،
+         *    ابعاد عکس نیز به تدریج کاهش داده می‌شود.
+         *
+         * 4- در نهایت فایل خروجی حتماً <= 100KB خواهد بود
+         *    یا تابع خطا می‌دهد.
+         *
+         * نکته:
+         * سایز عکس در مرحله اول محدود نمی‌شود.
+         * فقط در صورت نیاز برای رسیدن به حجم موردنظر کاهش می‌یابد.
+         */
+        async function compressImageToUnder100KB(file) {
+
+            const MAX_BYTES = 100 * 1024;
+
+
+            // --------------------------------------------------------
+            // اگر عکس از قبل زیر 100KB است، هیچ کاری انجام نده
+            // --------------------------------------------------------
+            if (file.size <= MAX_BYTES) {
+                return file;
+            }
+
+
+            // --------------------------------------------------------
+            // خواندن عکس
+            // --------------------------------------------------------
+            const image = await new Promise((resolve, reject) => {
+
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    resolve(img);
+                };
+
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('خواندن عکس امکان‌پذیر نیست'));
+                };
+
+                img.src = url;
+            });
+
+
+            // ابعاد اولیه عکس
+            let width = image.naturalWidth;
+            let height = image.naturalHeight;
+
+
+            if (!width || !height) {
+                throw new Error('ابعاد عکس قابل تشخیص نیست');
+            }
+
+
+            // --------------------------------------------------------
+            // ساخت Canvas
+            // --------------------------------------------------------
+            const canvas = document.createElement('canvas');
+
+            const ctx = canvas.getContext('2d', {
+                alpha: false
+            });
+
+
+            if (!ctx) {
+                throw new Error('Canvas در این مرورگر قابل استفاده نیست');
+            }
+
+
+            // --------------------------------------------------------
+            // تابع تبدیل Canvas به فایل JPEG
+            // --------------------------------------------------------
+            async function canvasToFile(quality) {
+
+                return new Promise((resolve, reject) => {
+
+                    canvas.toBlob(
+                        blob => {
+
+                            if (!blob) {
+                                reject(
+                                    new Error(
+                                        'تبدیل عکس به JPEG انجام نشد'
+                                    )
+                                );
+
+                                return;
+                            }
+
+
+                            const newFile = new File(
+                                [blob],
+                                file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+                                {
+                                    type: 'image/jpeg',
+                                    lastModified: Date.now()
+                                }
+                            );
+
+
+                            resolve(newFile);
+                        },
+                        'image/jpeg',
+                        quality
+                    );
+                });
+            }
+
+
+            // --------------------------------------------------------
+            // مرحله اول:
+            // فقط کاهش کیفیت، بدون تغییر ابعاد
+            // --------------------------------------------------------
+
+            canvas.width = width;
+            canvas.height = height;
+
+            ctx.drawImage(
+                image,
+                0,
+                0,
+                width,
+                height
+            );
+
+
+            let quality = 0.90;
+
+
+            for (let i = 0; i < 10; i++) {
+
+                const result = await canvasToFile(quality);
+
+
+                if (result.size <= MAX_BYTES) {
+                    return result;
+                }
+
+
+                quality -= 0.08;
+
+
+                if (quality < 0.10) {
+                    quality = 0.10;
+                    break;
+                }
+            }
+
+
+            // --------------------------------------------------------
+            // مرحله دوم:
+            // کاهش تدریجی ابعاد عکس
+            // --------------------------------------------------------
+
+            let scale = 0.90;
+
+
+            for (let i = 0; i < 15; i++) {
+
+                width = Math.max(
+                    100,
+                    Math.round(width * scale)
+                );
+
+                height = Math.max(
+                    100,
+                    Math.round(height * scale)
+                );
+
+
+                canvas.width = width;
+                canvas.height = height;
+
+
+                ctx.clearRect(
+                    0,
+                    0,
+                    width,
+                    height
+                );
+
+
+                ctx.drawImage(
+                    image,
+                    0,
+                    0,
+                    width,
+                    height
+                );
+
+
+                // بعد از کاهش ابعاد، کیفیت را از مقدار مناسب شروع می‌کنیم
+                quality = 0.75;
+
+
+                for (let q = 0; q < 6; q++) {
+
+                    const result = await canvasToFile(quality);
+
+
+                    if (result.size <= MAX_BYTES) {
+                        return result;
+                    }
+
+
+                    quality -= 0.10;
+
+
+                    if (quality < 0.20) {
+                        quality = 0.20;
+                        break;
+                    }
+                }
+
+
+                // مرحله بعد ابعاد را بیشتر کاهش می‌دهد
+                scale = 0.85;
+            }
+
+
+            throw new Error(
+                'امکان کاهش حجم عکس به کمتر از 100KB وجود ندارد'
+            );
+        }
+
+
+        // ============================================================
+        // آماده سازی رسید و ارسال فرم
+        // ============================================================
+        async function prepareReceiptAndSubmit(form) {
+
+            const fileInput =
+                document.getElementById('receipt_image');
+
+            const file = fileInput.files[0];
+
+
+            // --------------------------------------------------------
+            // اگر فایل انتخاب نشده، فرم عادی ارسال شود
+            // --------------------------------------------------------
+            if (!file) {
+
+                HTMLFormElement.prototype.submit.call(form);
+                return;
+            }
+
+
+            // --------------------------------------------------------
+            // اگر عکس از قبل <= 100KB است:
+            // مستقیم ارسال شود و اصلاً فشرده نشود
+            // --------------------------------------------------------
+            if (
+                file.type.startsWith('image/') &&
+                file.size <= MAX_IMAGE_BYTES
+            ) {
+
+                HTMLFormElement.prototype.submit.call(form);
+                return;
+            }
+
+
+            // --------------------------------------------------------
+            // PDF
+            // --------------------------------------------------------
+            if (file.type === 'application/pdf') {
+
+                if (file.size > PDF_WARNING_BYTES) {
+
+                    const shouldUpload = confirm(
+                        `حجم فایل زیاد است: ${formatKilobytes(file.size)} کیلوبایت. آیا مایل به آپلود آن هستید؟`
+                    );
+
+
+                    if (!shouldUpload) {
+                        return;
+                    }
+                }
+
+
+                HTMLFormElement.prototype.submit.call(form);
+                return;
+            }
+
+
+            // --------------------------------------------------------
+            // بررسی نوع فایل
+            // --------------------------------------------------------
+            if (!file.type.startsWith('image/')) {
+
+                alert(
+                    'فقط فایل تصویر یا PDF قابل ارسال است.'
+                );
+
+                return;
+            }
+
+
+            // --------------------------------------------------------
+            // فشرده سازی عکس
+            // --------------------------------------------------------
+            try {
+
+                const original =
+                    await readImageDimensions(file);
+
+
+                const compressedFile =
+                    await compressImageToUnder100KB(file);
+
+
+                const converted =
+                    await readImageDimensions(compressedFile);
+
+
+                // ----------------------------------------------------
+                // بررسی نهایی حجم
+                // ----------------------------------------------------
+                if (compressedFile.size > MAX_IMAGE_BYTES) {
+
+                    alert(
+                        'حجم عکس بعد از فشرده‌سازی هنوز بیشتر از 100 کیلوبایت است.'
+                    );
+
+                    return;
+                }
+
+
+                // ----------------------------------------------------
+                // نمایش نتیجه
+                // ----------------------------------------------------
+                alert(
+                    `حجم عکس ${formatKilobytes(file.size)} کیلوبایت و رزولوشن آن ${original.width}×${original.height} پیکسل است؛ ` +
+                    `تبدیل به ${formatKilobytes(compressedFile.size)} کیلوبایت و ${converted.width}×${converted.height} پیکسل می‌شود.`
+                );
+
+
+                // ----------------------------------------------------
+                // جایگزین کردن فایل اصلی با فایل فشرده‌شده
+                // ----------------------------------------------------
+                const dataTransfer =
+                    new DataTransfer();
+
+                dataTransfer.items.add(compressedFile);
+
+                fileInput.files =
+                    dataTransfer.files;
+
+
+                // ----------------------------------------------------
+                // ارسال واقعی فرم
+                // ----------------------------------------------------
+                HTMLFormElement.prototype.submit.call(form);
+
+            } catch (error) {
+
+                console.error(
+                    'خطا در فشرده‌سازی عکس:',
+                    error
+                );
+
+
+                alert(
+                    'فشرده‌سازی عکس انجام نشد؛ فایل ارسال نشد. لطفاً عکس دیگری انتخاب کنید.'
+                );
+            }
+        }
+
+
+        // ============================================================
+        // کنترل ارسال فرم
+        // ============================================================
+        document
+            .querySelector('form[action="/add_petty_cash"]')
+            .addEventListener(
+                'submit',
+                async function(event) {
+
+                    event.preventDefault();
+
+                    await prepareReceiptAndSubmit(this);
+                }
+            );
+
+    });
+</script>
+{% endblock %}

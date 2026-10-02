@@ -1,0 +1,137 @@
+{% extends "layout.html" %}{% block title %}پنل مدیریت{% endblock %}{% block nav %}{% endblock %}{% block content %}<header class="text-center mb-6"><h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">پنل مدیریت پیشرفته</h1><p class="text-gray-500 text-sm">مدیریت جامع کاربران، کارکنان و دسترسی‌های سیستم.</p></header><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{% if session['user']['permissions']['dashboard'] %}<a href="/dashboard" class="bg-orange-600 text-white p-6 rounded-lg shadow-lg hover:bg-orange-700 transition duration-300 transform hover:scale-105"><div class="text-center"><h2 class="text-xl font-bold mb-2">داشبورد</h2><p class="text-sm">نمایش خلاصه‌ای از وضعیت فعلی</p></div></a>{% endif %}{% if session['user']['permissions']['index'] %}
+<a href="/index" class="bg-blue-600 text-white p-6 rounded-lg shadow-lg hover:bg-blue-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">ثبت تردد</h2>
+        <p class="text-sm">ثبت ورود و خروج کارکنان به صورت انفرادی یا گروهی.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['management'] %}
+<a href="/management" class="bg-green-600 text-white p-6 rounded-lg shadow-lg hover:bg-green-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">مدیریت کارکنان</h2>
+        <p class="text-sm">افزودن، ویرایش و حذف اطلاعات کارکنان.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['reports'] %}
+<a href="/reports" class="bg-red-600 text-white p-6 rounded-lg shadow-lg hover:bg-red-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">گزارشات تردد</h2>
+        <p class="text-sm">مشاهده، فیلتر و خروجی گرفتن از گزارشات ورود و خروج.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['users'] %}
+<a href="/users" class="bg-purple-600 text-white p-6 rounded-lg shadow-lg hover:bg-purple-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">مدیریت کاربران</h2>
+        <p class="text-sm">مدیریت دسترسی‌ها و اطلاعات کاربران سیستم.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['petty_cash'] %}
+<a href="/petty_cash" class="bg-yellow-600 text-white p-6 rounded-lg shadow-lg hover:bg-yellow-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">ثبت هزینه</h2>
+        <p class="text-sm">ثبت هزینه‌ها و بارگذاری فیش.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['project_wbs'] %}
+<a href="/project_wbs" class="bg-cyan-600 text-white p-6 rounded-lg shadow-lg hover:bg-cyan-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center"><h2 class="text-xl font-bold mb-2">ساختار شکست پروژه</h2><p class="text-sm">ورود دستی یا Excel، و مدیریت وزن و متره فعالیت‌ها.</p></div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['project_progress'] %}
+<a href="/project_progress" class="bg-cyan-600 text-white p-6 rounded-lg shadow-lg hover:bg-cyan-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center"><h2 class="text-xl font-bold mb-2">پیشرفت فیزیکی پروژه</h2><p class="text-sm">مشاهده پیشرفت کل و جزئیات بخش‌های WBS با نمودار.</p></div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['petty_cash_reports'] %}
+<a href="/petty_cash_reports" class="bg-yellow-600 text-white p-6 rounded-lg shadow-lg hover:bg-yellow-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">گزارشات هزینه</h2>
+        <p class="text-sm">بررسی و مدیریت گزارشات مالی مربوط به هزینه.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['daily_worker'] %}
+<a href="/daily_worker" class="bg-gray-600 text-white p-6 rounded-lg shadow-lg hover:bg-gray-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">ثبت نفرات  فعال</h2>
+        <p class="text-sm">ثبت ورود و خروج کارکنان فعال.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['daily_worker_reports'] %}
+<a href="/daily_worker_reports" class="bg-gray-600 text-white p-6 rounded-lg shadow-lg hover:bg-gray-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">گزارشات نفرات فعال</h2>
+        <p class="text-sm">مشاهده و بررسی اطلاعات کارکنان فعال.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['financial_records'] %}
+<a href="/financial_records" class="bg-teal-600 text-white p-6 rounded-lg shadow-lg hover:bg-teal-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">ثبت مالی</h2>
+        <p class="text-sm">ثبت درآمدها و هزینه‌ها.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['financial_reports'] %}
+<a href="/financial_reports" class="bg-teal-600 text-white p-6 rounded-lg shadow-lg hover:bg-teal-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">گزارش مالی</h2>
+        <p class="text-sm">مشاهده و تحلیل گزارش‌های مالی.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['facilities'] %}
+<a href="/facilities" class="bg-violet-600 text-white p-6 rounded-lg shadow-lg hover:bg-violet-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">ثبت گزارش تأسیسات</h2>
+        <p class="text-sm">ثبت گزارش کار روزانه تیم تأسیسات.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['facilities_reports'] %}
+<a href="/facilities_reports" class="bg-violet-600 text-white p-6 rounded-lg shadow-lg hover:bg-violet-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">گزارشات تأسیسات</h2>
+        <p class="text-sm">مشاهده و مدیریت گزارشات روزانه تأسیسات.</p>
+    </div>
+</a>
+{% endif %}
+
+{% if session['user']['permissions']['payroll_calculation'] %}
+<a href="/payroll_calculation" class="bg-pink-600 text-white p-6 rounded-lg shadow-lg hover:bg-pink-700 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">محاسبه حقوق</h2>
+        <p class="text-sm">محاسبه حقوق و دستمزد کارکنان.</p>
+    </div>
+</a>
+{% endif %}
+
+<!-- Logout Card -->
+<a href="/logout" class="bg-red-500 text-white p-6 rounded-lg shadow-lg hover:bg-red-600 transition duration-300 transform hover:scale-105">
+    <div class="text-center">
+        <h2 class="text-xl font-bold mb-2">خروج</h2>
+        <p class="text-sm">خروج از حساب کاربری.</p>
+    </div>
+</a>
+</div>{% endblock %}

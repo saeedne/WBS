@@ -1,0 +1,522 @@
+{% extends "layout.html" %}
+
+{% block title %}گزارشات ورود و خروج{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/persian-datepicker.min.css">
+<style>
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0,0,0);
+        background-color: rgba(0,0,0,0.4);
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-content {
+        background-color: #fefefe;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 90%;
+        max-width: 600px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        position: relative;
+    }
+    .close-button {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+    }
+    .close-button:hover,
+    .close-button:focus {
+        color: black;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    /* Style for the log table row */
+    .log-row {
+        background-color: #e2e8f0;
+    }
+    .edit-form-row {
+        background-color: #e2e8f0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">گزارشات ورود و خروج</h1>
+    <p class="text-gray-500 text-sm">گزارش کامل تمام ورود و خروج‌های ثبت‌شده.</p>
+</header>
+
+<section>
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-3 space-y-2 sm:space-y-0">
+        <h2 class="text-xl font-bold text-gray-800">گزارش کامل</h2>
+        <div class="flex space-x-3 space-x-reverse flex-wrap justify-end">
+            <a id="export-filtered-btn" href="#" class="bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center space-x-2 space-x-reverse text-sm my-1 sm:my-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414L9 3.586V13a1 1 0 112 0V3.586l2.707 2.707a1 1 0 11-1.414 1.414L10 5.414l-2.293 2.293a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                </svg>
+                <span>خروجی اکسل گزارش</span>
+            </a>
+            <!-- NEW ID: export-separate-sheets-btn -->
+            <a id="export-separate-sheets-btn" href="/export/all_to_single_xlsx" class="bg-purple-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-purple-700 transition duration-300 flex items-center space-x-2 space-x-reverse text-sm my-1 sm:my-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 11.586V3a1 1 0 112 0v8.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+                <span>خروجی با شیت مجزا از داده ها</span>
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <form action="/reports" method="get" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="employee_id_filter" class="block text-sm font-medium text-gray-700 mb-1">نام کارمند:</label>
+                    <select id="employee_id_filter" name="employee_id" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                        <option value="all" {% if selected_employee_id == 'all' or selected_employee_id == none %}selected{% endif %}>همه کارکنان</option>
+                        {% for employee in employees %}
+                        <option value="{{ employee.employee_id }}" {% if selected_employee_id == employee.employee_id %}selected{% endif %}>{{ employee.name }} ({{ employee.employee_id }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="start_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ شروع:</label>
+                    <input type="text" id="start_date_filter" name="start_date" value="{{ start_date if start_date else '' }}" placeholder="1404/01/01" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm" data-jdp>
+                </div>
+                <div>
+                    <label for="end_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ پایان:</label>
+                    <input type="text" id="end_date_filter" name="end_date" value="{{ end_date if end_date else '' }}" placeholder="1404/12/29" class="date-input w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm" data-jdp>
+                </div>
+                <div>
+                    <label for="condition_filter" class="block text-sm font-medium text-gray-700 mb-1">شرایط:</label>
+                    <select id="condition_filter" name="condition_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                        <option value="all" {% if selected_condition == 'all' or selected_condition == none %}selected{% endif %}>همه</option>
+                        <option value="عادی" {% if selected_condition == 'عادی' %}selected{% endif %}>عادی</option>
+                        <option value="شبکار" {% if selected_condition == 'شبکار' %}selected{% endif %}>شبکار</option>
+                        <option value="مرخصی" {% if selected_condition == 'مرخصی' %}selected{% endif %}>مرخصی</option>
+                        <option value="استراحت" {% if selected_condition == 'استراحت' %}selected{% endif %}>استراحت</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300 text-sm">
+                اعمال فیلتر
+            </button>
+        </form>
+    </div>
+
+    <form id="bulk-delete-form" action="/bulk_delete_logs" method="post">
+        <!-- Add these hidden fields to the form to pass filter values -->
+        <input type="hidden" name="employee_id_filter" value="{{ selected_employee_id if selected_employee_id else 'all' }}">
+        <input type="hidden" name="start_date_filter" value="{{ start_date if start_date else '' }}">
+        <input type="hidden" name="end_date_filter" value="{{ end_date if end_date else '' }}">
+        <input type="hidden" name="condition_filter" value="{{ selected_condition if selected_condition else 'all' }}">
+
+        <div class="flex justify-between items-center mb-4">
+            <label class="flex items-center space-x-2 space-x-reverse cursor-pointer">
+                <input type="checkbox" id="select-all-checkbox" class="form-checkbox h-4 w-4 text-red-600 rounded">
+                <span class="text-sm font-medium text-gray-700">انتخاب همه</span>
+            </label>
+            <button type="button" id="bulk-delete-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-red-700 transition duration-300 text-sm">
+                حذف انتخاب‌شده‌ها
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+            <div class="p-4 bg-white">
+                <label class="block text-sm font-medium text-gray-700 mb-1">جستجو در گزارشات:</label>
+                <input type="text" id="report-search" placeholder="جستجو بر اساس شماره پرسنلی یا نام کارمند" class="w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+            </div>
+            <div class="max-h-72 overflow-y-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-50 sticky top-0">
+                        <tr>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">
+                                <span class="sr-only">انتخاب</span>
+                            </th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">شماره پرسنلی</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">نام کارمند</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">شرایط</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">زمان</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">محل فعالیت</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">شرح فعالیت</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">مقدار فعالیت</th>
+                            <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody" class="bg-white divide-y divide-gray-200">
+                        {% for record in records %}
+                        <tr class="report-item" data-id="{{ record.id }}" data-employee-id="{{ record.employee_id }}" data-name="{{ record.name }}" data-action="{{ record.action }}" data-condition="{{ record.condition }}" data-timestamp-fa="{{ record.timestamp_fa }}" data-timestamp-miladi="{{ record.timestamp_miladi }}" data-activity-location="{{ record.activity_location or '---' }}" data-activity-description="{{ record.activity_description or '---' }}" data-activity-amount="{{ record.activity_amount or '---' }}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                <input type="checkbox" name="record_ids" value="{{ record.id }}" class="form-checkbox h-4 w-4 text-indigo-600 rounded record-checkbox">
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ record.employee_id }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ record.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold {% if record.action == 'ورود' %}text-green-600{% else %}text-red-600{% endif %}">{{ record.action }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.condition }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.timestamp_fa }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.activity_location or '---' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.activity_description or '---' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.activity_amount or '---' }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button type="button" onclick="openEditModal(this)" class="text-indigo-600 hover:text-indigo-900 transition duration-300">
+                                    ویرایش
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </form>
+</section>
+
+<div class="mt-6 flex justify-end">
+    <!-- Added id="clear-data-form" and removed inline onsubmit confirm -->
+    <!-- <form id="clear-data-form" action="/clear_data" method="post"> -->
+        <!-- <button type="submit" class="bg-red-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-300 text-sm">
+            پاک کردن تمام داده‌ها
+        </button> -->
+    <!-- </form> -->
+</div>
+
+<!-- The Edit Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" onclick="closeEditModal()">&times;</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-4">ویرایش رکورد تردد</h2>
+        <form id="edit-log-form" action="" method="post" class="space-y-3">
+            <input type="hidden" name="id" id="edit_id">
+            <!-- Add these hidden fields to the form to pass filter values -->
+            <input type="hidden" name="employee_id_filter" value="{{ selected_employee_id if selected_employee_id else 'all' }}">
+            <input type="hidden" name="start_date_filter" value="{{ start_date if start_date else '' }}">
+            <input type="hidden" name="end_date_filter" value="{{ end_date if end_date else '' }}">
+            <input type="hidden" name="condition_filter" value="{{ selected_condition if selected_condition else 'all' }}">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label for="edit_employeeId" class="block text-sm font-medium text-gray-700">شماره پرسنلی:</label>
+                    <input type="text" id="edit_employeeId" name="employeeId" required class="w-full p-2 border-gray-300 rounded-md text-sm">
+                </div>
+                <div>
+                    <label for="edit_action" class="block text-sm font-medium text-gray-700">عملیات:</label>
+                    <select id="edit_action" name="action" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        <option value="ورود">ورود</option>
+                        <option value="خروج">خروج</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="edit_condition" class="block text-sm font-medium text-gray-700">شرایط:</label>
+                    <select id="edit_condition" name="condition" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                        <option value="عادی">عادی</option>
+                        <option value="شبکار">شبکار</option>
+                        <option value="مرخصی">مرخصی</option>
+                        <option value="استراحت">استراحت</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="edit_date" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                    <input type="text" id="edit_date" name="date" required class="w-full p-2 border-gray-300 rounded-md text-sm" data-jdp>
+                </div>
+                <div>
+                    <label for="edit_time" class="block text-sm font-medium text-gray-700">ساعت:</label>
+                    <input type="text" id="edit_time" name="time" required class="w-full p-2 border-gray-300 rounded-md text-sm" placeholder="HH:MM:SS">
+                </div>
+                <div>
+                    <label for="edit_activity_location" class="block text-sm font-medium text-gray-700">محل فعالیت:</label>
+                    <input type="text" id="edit_activity_location" name="activity_location" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                </div>
+                <div>
+                    <label for="edit_activity_description" class="block text-sm font-medium text-gray-700">شرح فعالیت:</label>
+                    <textarea id="edit_activity_description" name="activity_description" rows="2" class="w-full p-2 border-gray-300 rounded-md text-sm"></textarea>
+                </div>
+                <div>
+                    <label for="edit_activity_amount" class="block text-sm font-medium text-gray-700">مقدار فعالیت:</label>
+                    <input type="text" id="edit_activity_amount" name="activity_amount" class="w-full p-2 border-gray-300 rounded-md text-sm">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 space-x-reverse mt-4">
+                <button type="submit" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-green-700">ذخیره</button>
+                <button type="button" onclick="closeEditModal()" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-gray-500">انصراف</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- The Confirmation Modal (NEW) -->
+<div id="confirmationModal" class="modal">
+    <div class="modal-content max-w-sm">
+        <h2 id="confirmation-title" class="text-xl font-bold text-gray-800 mb-4">تأیید عملیات</h2>
+        <p id="confirmation-message" class="text-gray-700 mb-6 text-sm text-right">آیا مطمئن هستید؟</p>
+        <div class="flex justify-end space-x-3 space-x-reverse">
+            <button id="confirm-yes-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-red-700 transition duration-300">تأیید</button>
+            <button id="confirm-no-btn" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-gray-500 transition duration-300">انصراف</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+<script>
+    // Custom function to show a modal-style message box
+    function showMessageBox(message, type = 'info') {
+        const messageBox = document.createElement('div');
+        messageBox.className = `fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-50`;
+        messageBox.innerHTML = `
+            <div class="bg-white p-6 rounded-lg shadow-xl text-center max-w-sm mx-auto">
+                <p class="text-gray-800 text-sm">${message}</p>
+                <button onclick="this.closest('.fixed').remove()" class="mt-4 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-indigo-700 transition duration-300">باشه</button>
+            </div>
+        `;
+        document.body.appendChild(messageBox);
+    }
+
+    // Generic function to show a confirmation box (NEW)
+    function showConfirmationBox(message, callback) {
+        const modal = document.getElementById('confirmationModal');
+        const messageEl = document.getElementById('confirmation-message');
+        const yesBtn = document.getElementById('confirm-yes-btn');
+        const noBtn = document.getElementById('confirm-no-btn');
+
+        messageEl.textContent = message;
+        modal.style.display = 'flex';
+
+        // Clone and replace buttons to ensure fresh event listeners (to prevent multiple submissions)
+        const newYesBtn = yesBtn.cloneNode(true);
+        const newNoBtn = noBtn.cloneNode(true);
+        yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+        noBtn.parentNode.replaceChild(newNoBtn, noBtn);
+
+        // Event listener for confirmation
+        newYesBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            callback(true);
+        });
+
+        // Event listener for cancellation
+        newNoBtn.addEventListener('click', () => {
+            modal.style.display = 'none';
+            callback(false);
+        });
+
+        // Handle outside click closure
+        const clickHandler = (event) => {
+            if (event.target == modal) {
+                modal.style.display = 'none';
+                callback(false); // Treat outside click as cancel
+                window.removeEventListener('click', clickHandler);
+            }
+        };
+        window.addEventListener('click', clickHandler);
+    }
+
+
+    // Functions for the edit modal
+    function openEditModal(button) {
+        const row = button.closest('tr');
+        const recordId = row.dataset.id;
+        const employeeId = row.dataset.employeeId;
+        const action = row.dataset.action;
+        const condition = row.dataset.condition;
+        const timestampFa = row.dataset.timestampFa;
+        const activityLocation = row.dataset.activityLocation;
+        const activityDescription = row.dataset.activityDescription;
+        const activityAmount = row.dataset.activityAmount;
+
+        const [dateFa, timeFa] = timestampFa.split(' ');
+
+        // Populate the modal form
+        document.getElementById('edit_id').value = recordId;
+        document.getElementById('edit_employeeId').value = employeeId;
+        document.getElementById('edit_action').value = action;
+        document.getElementById('edit_condition').value = condition;
+        document.getElementById('edit_date').value = dateFa;
+        document.getElementById('edit_time').value = timeFa;
+        document.getElementById('edit_activity_location').value = activityLocation === '---' ? '' : activityLocation;
+        document.getElementById('edit_activity_description').value = activityDescription === '---' ? '' : activityDescription;
+        document.getElementById('edit_activity_amount').value = activityAmount === '---' ? '' : activityAmount;
+
+        // Set the form action URL
+        const editForm = document.getElementById('edit-log-form');
+        editForm.action = `/edit_log/${recordId}`;
+
+        // Show the modal
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'flex';
+
+        // Initialize the datepicker for the modal input
+        kamaDatepicker('edit_date', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+    }
+
+    function closeEditModal() {
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'none';
+    }
+
+    $(document).ready(function() {
+        const allReportItems = document.querySelectorAll('.report-item');
+        const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+        const selectAllCheckbox = document.getElementById('select-all-checkbox');
+        const bulkDeleteForm = document.getElementById('bulk-delete-form');
+        const exportBtn = document.getElementById('export-filtered-btn');
+        // NEW: Get the separate sheets export button
+        const exportSeparateSheetsBtn = document.getElementById('export-separate-sheets-btn');
+        const clearDataForm = document.getElementById('clear-data-form'); // Get the new ID
+
+        // Update the export button link (Modified to handle both export links)
+        function updateExportLink() {
+            const employeeIdFilter = document.getElementById('employee_id_filter').value;
+            const startDateFilter = document.getElementById('start_date_filter').value;
+            const endDateFilter = document.getElementById('end_date_filter').value;
+            const conditionFilter = document.getElementById('condition_filter').value;
+
+            const urlParams = new URLSearchParams();
+            if (employeeIdFilter !== 'all') urlParams.append('employee_id', employeeIdFilter);
+            if (startDateFilter) urlParams.append('start_date', startDateFilter);
+            if (endDateFilter) urlParams.append('end_date', endDateFilter);
+            if (conditionFilter !== 'all') urlParams.append('condition_filter', conditionFilter);
+
+            const queryString = urlParams.toString();
+
+            // 1. Update the filtered export button (خروجی اکسل گزارش)
+            exportBtn.href = `/export/filtered?${queryString}`;
+
+            // 2. Update the separate sheets export button (خروجی با شیت مجزا از داده ها)
+            exportSeparateSheetsBtn.href = `/export/all_to_single_xlsx?${queryString}`;
+        }
+
+        // Attach event listeners to filter inputs
+        document.getElementById('employee_id_filter').addEventListener('change', updateExportLink);
+        document.getElementById('start_date_filter').addEventListener('change', updateExportLink);
+        document.getElementById('end_date_filter').addEventListener('change', updateExportLink);
+        document.getElementById('condition_filter').addEventListener('change', updateExportLink);
+
+        // Initial call to set the correct link on page load
+        updateExportLink();
+
+        $("#report-search").on("keyup", function() {
+            const searchTerm = $(this).val().toLowerCase();
+            allReportItems.forEach(row => {
+                const rowText = row.textContent.toLowerCase();
+                if (rowText.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+
+        // Initialize KamaDatepicker for the filter inputs
+        kamaDatepicker('start_date_filter', {
+           forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        kamaDatepicker('end_date_filter', {
+           forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+
+        // Handle select all functionality
+        selectAllCheckbox.addEventListener('change', (event) => {
+            const visibleCheckboxes = document.querySelectorAll('#logTableBody input[type="checkbox"]:not([style*="display: none"])');
+            visibleCheckboxes.forEach(checkbox => {
+                checkbox.checked = event.target.checked;
+            });
+        });
+
+        // Handle bulk delete button click - Replaced confirm() with showConfirmationBox()
+        bulkDeleteBtn.addEventListener('click', (event) => {
+            const checkedCheckboxes = document.querySelectorAll('input[name="record_ids"]:checked');
+            if (checkedCheckboxes.length === 0) {
+                showMessageBox('لطفاً حداقل یک رکورد را برای حذف انتخاب کنید.');
+                event.preventDefault();
+            } else {
+                showConfirmationBox('آیا مطمئن هستید که می‌خواهید رکوردهای انتخاب شده را حذف کنید؟ این عملیات غیرقابل بازگشت است.', (confirmed) => {
+                    if (confirmed) {
+                        // Get the filter values from the hidden inputs
+                        const employeeIdFilter = bulkDeleteForm.querySelector('input[name="employee_id_filter"]').value;
+                        const startDateFilter = bulkDeleteForm.querySelector('input[name="start_date_filter"]').value;
+                        const endDateFilter = bulkDeleteForm.querySelector('input[name="end_date_filter"]').value;
+                        const conditionFilter = bulkDeleteForm.querySelector('input[name="condition_filter"]').value;
+
+                        // Create a new URL with the filters
+                        let redirectUrl = '/bulk_delete_logs?';
+                        if (employeeIdFilter !== 'all') {
+                            redirectUrl += `employee_id_filter=${employeeIdFilter}&`;
+                        }
+                        if (startDateFilter) {
+                            redirectUrl += `start_date_filter=${startDateFilter}&`;
+                        }
+                        if (endDateFilter) {
+                            redirectUrl += `end_date_filter=${endDateFilter}&`;
+                        }
+                        if (conditionFilter !== 'all') {
+                            redirectUrl += `condition_filter=${conditionFilter}&`;
+                        }
+                        // Remove trailing '&' if any
+                        redirectUrl = redirectUrl.endsWith('&') ? redirectUrl.slice(0, -1) : redirectUrl;
+
+                        // Set the action of the form to the new URL and submit
+                        bulkDeleteForm.action = redirectUrl;
+                        bulkDeleteForm.submit();
+                    }
+                });
+            }
+        });
+
+        // Removed the bulkDeleteForm.addEventListener('submit', ...) handler as it was redundant and contained old confirm logic.
+
+
+        // Handle Clear All Data submission - Replaced inline onsubmit and confirm() with event listener
+        clearDataForm.addEventListener('submit', function(event) {
+            event.preventDefault(); // Stop default submission
+            const form = this;
+            showConfirmationBox('آیا مطمئن هستید که می‌خواهید تمام داده‌ها را پاک کنید؟ این عملیات غیرقابل بازگشت است.', (confirmed) => {
+                if (confirmed) {
+                    form.submit();
+                }
+            });
+        });
+
+
+        // Close EDIT modal when clicking outside of it
+        window.addEventListener('click', (event) => {
+            const modal = document.getElementById('editModal');
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        });
+    });
+</script>
+{% endblock %}

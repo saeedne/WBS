@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+
+{% block title %}گزارش مالی{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">گزارش مالی</h1>
+    <p class="text-gray-500 text-sm">خلاصه درآمدها و هزینه‌ها برای محاسبه سود و زیان.</p>
+</header>
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6 text-center">
+    <div class="bg-white p-6 rounded-lg shadow-lg border border-green-200">
+        <h2 class="text-xl font-bold text-green-600">درآمد کل</h2>
+        <p class="text-2xl font-bold mt-2">{{ "{:,.0f}".format(total_income|int) }} <span class="text-sm">ریال</span></p>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-lg border border-red-200">
+        <h2 class="text-xl font-bold text-red-600">هزینه کل</h2>
+        <p class="text-2xl font-bold mt-2">{{ "{:,.0f}".format(total_expense|int) }} <span class="text-sm">ریال</span></p>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-lg border border-gray-200">
+        <h2 class="text-xl font-bold text-gray-800">سود/زیان</h2>
+        <p class="text-2xl font-bold mt-2 {% if total_income - total_expense > 0 %}text-green-600{% elif total_income - total_expense < 0 %}text-red-600{% else %}text-gray-800{% endif %}">
+            {{ "{:,.0f}".format((total_income - total_expense)|int) }} <span class="text-sm">ریال</span>
+        </p>
+    </div>
+</div>
+
+<div class="flex border-b border-gray-200 mb-4">
+    <button onclick="showTab('income')" id="income-tab-btn" class="py-2 px-4 font-semibold text-sm transition-colors duration-300 border-b-2 border-indigo-600 text-indigo-600">درآمدها</button>
+    <button onclick="showTab('expense')" id="expense-tab-btn" class="py-2 px-4 font-semibold text-sm transition-colors duration-300 border-b-2 border-transparent text-gray-500 hover:text-indigo-600 hover:border-indigo-600">هزینه‌ها</button>
+</div>
+
+<div id="income-table" class="tab-content">
+    <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">تاریخ</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">شرح</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">مبلغ (ریال)</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">منبع</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">توضیحات</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for record in income_records %}
+                    <tr class="hover:bg-gray-100">
+                        <td class="px-6 py-4 whitespace-nowrap">{{ record.date }}</td>
+                        <td class="px-6 py-4">{{ record.description }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-green-600">{{ "{:,.0f}".format(record.amount|int) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ record.source }}</td>
+                        <td class="px-6 py-4">{{ record.notes or '---' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-gray-400">هیچ رکوردی یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="expense-table" class="tab-content" style="display:none;">
+    <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">تاریخ</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">شرح</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">مبلغ (ریال)</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">دسته بندی</th>
+                        <th class="px-6 py-3 text-right font-medium text-gray-500 uppercase">توضیحات</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for record in expense_records %}
+                    <tr class="hover:bg-gray-100">
+                        <td class="px-6 py-4 whitespace-nowrap">{{ record.date }}</td>
+                        <td class="px-6 py-4">{{ record.description }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-red-600">{{ "{:,.0f}".format(record.amount|int) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">{{ record.category }}</td>
+                        <td class="px-6 py-4">{{ record.notes or '---' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-gray-400">هیچ رکوردی یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+    function showTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => {
+            tab.style.display = 'none';
+        });
+        document.getElementById(`${tabName}-table`).style.display = 'block';
+
+        document.querySelectorAll('button[id$="-tab-btn"]').forEach(btn => {
+            btn.classList.remove('border-indigo-600', 'text-indigo-600');
+            btn.classList.add('border-transparent', 'text-gray-500');
+        });
+        document.getElementById(`${tabName}-tab-btn`).classList.add('border-indigo-600', 'text-indigo-600');
+        document.getElementById(`${tabName}-tab-btn`).classList.remove('border-transparent', 'text-gray-500');
+    }
+</script>
+{% endblock %}

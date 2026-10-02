@@ -1,0 +1,920 @@
+{% extends "layout.html" %}
+
+{% block title %}گزارشات هزینه{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/kamadatepicker.min.css">
+<style>
+    /* Modal styles */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgb(0,0,0);
+        background-color: rgba(0,0,0,0.9);
+        padding-top: 60px;
+        justify-content: center;
+        align-items: center;
+    }
+    .modal-content {
+        margin: auto;
+        display: block;
+        width: 80%;
+        max-width: 700px;
+    }
+    .modal-content img, .modal-content embed {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+    #caption {
+        margin: auto;
+        display: block;
+        width: 80%;
+        max-width: 700px;
+        text-align: center;
+        color: #ccc;
+        padding: 10px 0;
+        height: 150px;
+    }
+    .close {
+        position: absolute;
+        top: 15px;
+        right: 35px;
+        color: #f1f1f1;
+        font-size: 40px;
+        font-weight: bold;
+        transition: 0.3s;
+        cursor: pointer;
+    }
+    .close:hover,
+    .close:focus {
+        color: #bbb;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .edit-form-row {
+        background-color: #e2e8f0;
+    }
+    
+    #no-receipt-message {
+        color: #fff;
+        text-align: center;
+        margin-top: 20px;
+    }
+    .report-summary {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+    }
+    .report-summary-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+    }
+    @media (max-width: 640px) {
+        .report-summary {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="text-center mb-6">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800 mb-1">گزارشات هزینه</h1>
+    <p class="text-gray-500 text-sm">بررسی و مدیریت گزارشات مالی مربوط به هزینه.</p>
+</header>
+
+<section>
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-3 space-y-2 sm:space-y-0">
+        <h2 class="text-xl font-bold text-gray-800">گزارش کامل</h2>
+        <a id="export-link" href="#" class="bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center space-x-2 space-x-reverse text-sm my-1 sm:my-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414L9 3.586V13a1 1 0 112 0V3.586l2.707 2.707a1 1 0 11-1.414 1.414L10 5.414l-2.293 2.293a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+            </svg>
+            <span>ساخت خروجی اکسل</span>
+        </a>
+    </div>
+
+    <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
+        <form action="/petty_cash_reports" method="get" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="start_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ شروع:</label>
+                    <input type="text" id="start_date_filter" name="start_date" value="{{ start_date if start_date else '' }}" placeholder="1404/01/01" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                </div>
+                <div>
+                    <label for="end_date_filter" class="block text-sm font-medium text-gray-700 mb-1">تاریخ پایان:</label>
+                    <input type="text" id="end_date_filter" name="end_date" value="{{ end_date if end_date else '' }}" placeholder="1404/12/29" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                </div>
+                <div>
+                    <label for="payer_filter" class="block text-sm font-medium text-gray-700 mb-1">پرداخت کننده:</label>
+                    <select id="payer_filter" name="payer_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                        <option value="all" {% if selected_payer == 'all' or selected_payer == none %}selected{% endif %}>همه</option>
+                        {% for payer in payers %}
+                        <option value="{{ payer }}" {% if selected_payer == payer %}selected{% endif %}>{{ payer }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="settlement_status_filter" class="block text-sm font-medium text-gray-700 mb-1">وضعیت تسویه:</label>
+                    <select id="settlement_status_filter" name="settlement_status_filter" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+                        <option value="all" {% if selected_status == 'all' or selected_status == none %}selected{% endif %}>همه</option>
+                        {% for status in settlement_statuses %}
+                        <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex items-center h-full pt-6">
+                    <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                        <input type="checkbox" id="personal_manager_payment_filter" name="personal_manager_payment_filter" value="yes"
+                               {% if selected_personal_manager_payment == 'yes' %}checked{% endif %}
+                               class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>پرداختی شخصی مدیر</span>
+                    </label>
+                </div>
+                <div class="flex items-center h-full pt-6">
+                    <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                        <input type="checkbox" id="exclude_manager_calculation_filter" name="exclude_manager_calculation_filter" value="yes"
+                               {% if selected_exclude_manager_calculation == 'yes' %}checked{% endif %}
+                               class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>عدم محاسبه برای مدیر</span>
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition duration-300 text-sm">
+                اعمال فیلتر
+            </button>
+        </form>
+        <div class="mt-4">
+            <label for="description_search" class="block text-sm font-medium text-gray-700 mb-1">جستجو در شرح:</label>
+            <input type="text" id="description_search" placeholder="متن مورد نظر را وارد کنید" class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-300 text-sm">
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
+        <div class="overflow-x-auto max-h-96">
+            <table class="min-w-full">
+                <thead class="bg-gray-50 sticky top-0">
+                    <tr>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">تاریخ</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">شرح</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">کد WBS</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">مبلغ کل (ریال)</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">پرداخت کننده</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">وضعیت تسویه</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="reportTableBody" class="bg-white divide-y divide-gray-200">
+                    {% for record in records %}
+                    <tr class="report-item transition duration-200 hover:bg-gray-100" 
+                        data-id="{{ record.id }}"
+                        data-date="{{ record.date }}"
+                        data-description="{{ record.description }}"
+                        data-unit="{{ record.unit }}"
+                        data-amount="{{ record.amount }}"
+                        data-unit-price="{{ record.unit_price }}"
+                        data-discount="{{ record.discount }}"
+                        data-total-amount="{{ record.total_amount }}"
+                        data-location="{{ record.location }}"
+                        data-notes="{{ record.notes }}"
+                        data-source="{{ record.source }}"
+                        data-invoice-number="{{ record.invoice_number }}"
+                        data-settlement-status="{{ record.settlement_status }}"
+                        data-payer="{{ record.payer }}"
+                        data-wbs-code="{{ record.wbs_code or '' }}"
+                        data-wbs-coverage-percent="{{ record.wbs_coverage_percent or 0 }}"
+                        data-wbs-links="{{ record.wbs_links|tojson|forceescape }}"
+                        data-personal-manager-payment="{{ record.personal_manager_payment }}"
+                        data-exclude-manager-calculation="{{ record.exclude_manager_calculation }}"
+                        data-receipt-image-path="{{ record.receipt_image_path }}"
+                    >
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.date }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 description-cell">
+                            {% if record.receipt_image_path %}
+                                <a href="#" class="text-indigo-600 hover:text-indigo-800" onclick="showReceiptModal('{{ record.receipt_image_path }}')">
+                                    {{ record.description }}
+                                </a>
+                            {% else %}
+                                <a href="#" class="text-indigo-600 hover:text-indigo-800" onclick="showReceiptModal('')">
+                                    {{ record.description }}
+                                </a>
+                            {% endif %}
+                            {% if record.personal_manager_payment %}<span class="mr-2 text-xs font-bold text-purple-600">(پ.م)</span>{% endif %}
+                            {% if record.exclude_manager_calculation %}<span class="mr-2 text-xs font-bold text-red-600">(ع.پ)</span>{% endif %}
+                            {% if record.exclude_manager_calculation and (record.description or '').lstrip().startswith('$$') %}<span class="mr-2 text-xs font-bold text-emerald-700">(س.م)</span>{% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-700">
+                            <div class="flex flex-wrap gap-1">
+                                {% for link in record.wbs_links %}
+                                <span class="relative inline-flex">
+                                    <button type="button" class="report-wbs-code rounded bg-indigo-50 px-2 py-1 text-indigo-700 hover:bg-indigo-100"
+                                            title="{{ link.activity or 'شرحی برای این کد ثبت نشده است' }} {{ '%g'|format(link.wbs_coverage_percent or 0) }}٪" aria-expanded="false">
+                                        {{ link.wbs_code }}
+                                    </button>
+                                    <span role="tooltip" class="report-wbs-tooltip hidden absolute right-0 top-full z-50 mt-1 w-56 rounded bg-gray-900 p-2 text-xs text-white shadow-lg">
+                                        {{ link.activity or 'شرحی برای این کد ثبت نشده است' }} {{ '%g'|format(link.wbs_coverage_percent or 0) }}٪
+                                    </span>
+                                </span>
+                                {% else %}
+                                <span class="text-gray-400">—</span>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 total-amount-cell">{{ "{:,.0f}".format(record.total_amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.payer }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold {% if record.settlement_status == 'تسویه شده' %}text-green-600{% else %}text-red-600{% endif %}">{{ record.settlement_status }}</td>
+                        {% if session.get('user', {}).get('role') == 'admin' %}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium flex space-x-2 space-x-reverse">
+                            <button type="button" onclick="openEditModal(this)" class="text-indigo-600 hover:text-indigo-900 transition duration-300">
+                                ویرایش
+                            </button>
+
+                            <form action="/delete_petty_cash/{{ record.id }}" method="post" class="inline-block"
+                                onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این رکورد را حذف کنید؟');">
+                                <button type="submit" class="text-red-600 hover:text-red-900 transition duration-300">
+                                    حذف
+                                </button>
+                            </form>
+                        </td>
+                        {% else %}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            -
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-4 text-center text-gray-400">هیچ رکوردی یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="report-summary" aria-label="خلاصه گزارش">
+            <div class="report-summary-item">
+                <span class="text-sm font-semibold text-gray-700">جمع کل در بازه زمانی انتخابی:</span>
+                <span id="total-amount-sum" class="whitespace-nowrap text-sm font-bold text-gray-900">{{ "{:,.0f}".format(report_totals.total_amount) }}</span>
+            </div>
+            <div class="report-summary-item">
+                <span class="text-sm font-semibold text-gray-700">جمع کل پرداختی شخصی مدیر در بازه زمانی انتخابی:</span>
+                <span id="personal-manager-sum" class="whitespace-nowrap text-sm font-bold text-gray-900">{{ "{:,.0f}".format(report_totals.personal_amount) }}</span>
+            </div>
+            <div class="report-summary-item">
+                <span class="text-sm font-semibold text-gray-700">جمع کل غیر قابل محاسبه در بازه زمانی انتخابی:</span>
+                <span id="excluded-manager-sum" class="whitespace-nowrap text-sm font-bold text-gray-900">{{ "{:,.0f}".format(report_totals.excluded_amount) }}</span>
+            </div>
+            {% if manager_overview %}
+            <div class="report-summary-item" style="grid-column: 1 / -1; display: block;">
+                <table class="w-full text-sm">
+                    <tbody class="divide-y divide-gray-200">
+                        <tr>
+                            <th scope="row" class="py-2 text-right font-semibold text-gray-700">کل سهم مدیر از ابتدای پروژه تا انتها</th>
+                            <td id="lifetime-manager-share" class="py-2 text-left font-bold text-gray-900">{{ "{:,.0f}".format(manager_overview.lifetime_share) }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="py-2 text-right font-semibold text-gray-700">سهم پرداخت شده تا کنون</th>
+                            <td id="paid-manager-share" class="py-2 text-left font-bold text-gray-900">{{ "{:,.0f}".format(manager_overview.paid_share) }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="py-2 text-right font-semibold text-gray-700">کل مبلغ مانده سهم مدیر</th>
+                            <td id="remaining-manager-share" class="py-2 text-left font-bold text-gray-900">{{ "{:,.0f}".format(manager_overview.remaining_share) }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" class="py-2 text-right font-semibold text-gray-700">جمع کل سهم مدیر در بازه زمانی انتخابی</th>
+                            <td id="manager-share-sum" class="py-2 text-left font-bold text-gray-900">{{ "{:,.0f}".format(report_totals.manager_share) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<!-- The Edit Modal -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <span class="close-button" onclick="closeEditModal()">&times;</span>
+        <h2 class="text-xl font-bold text-gray-800 mb-4">ویرایش رکورد هزینه</h2>
+        <form id="edit-petty-cash-form" action="" method="post" class="space-y-3">
+            <input type="hidden" name="id" id="edit_id">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="edit_date_fa" class="block text-sm font-medium text-gray-700">تاریخ:</label>
+                    <input type="text" id="edit_date_fa" name="date_fa" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_description" class="block text-sm font-medium text-gray-700">شرح:</label>
+                    <input type="text" id="edit_description" name="description" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_unit" class="block text-sm font-medium text-gray-700">واحد:</label>
+                    <input type="text" id="edit_unit" name="unit"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_amount" class="block text-sm font-medium text-gray-700">مقدار:</label>
+                    <input type="text" id="edit_amount" name="amount"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_unit_price" class="block text-sm font-medium text-gray-700">فی:</label>
+                    <input type="text" id="edit_unit_price" name="unit_price"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_discount" class="block text-sm font-medium text-gray-700">تخفیف:</label>
+                    <input type="text" id="edit_discount" name="discount" value="0"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_total_amount" class="block text-sm font-medium text-gray-700">مبلغ کل:</label>
+                    <input type="text" id="edit_total_amount" name="total_amount" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-gray-100"
+                           readonly>
+                </div>
+                <div>
+                    <label for="edit_location" class="block text-sm font-medium text-gray-700">محل استفاده:</label>
+                    <input type="text" id="edit_location" name="location"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_notes" class="block text-sm font-medium text-gray-700">توضیحات:</label>
+                    <input type="text" id="edit_notes" name="notes"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_source" class="block text-sm font-medium text-gray-700">محل تامین:</label>
+                    <input type="text" id="edit_source" name="source"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_invoice_number" class="block text-sm font-medium text-gray-700">شماره فاکتور:</label>
+                    <input type="text" id="edit_invoice_number" name="invoice_number"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
+                    <label for="edit_settlement_status" class="block text-sm font-medium text-gray-700">وضعیت تسویه:</label>
+                    <select id="edit_settlement_status" name="settlement_status"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                        <option value="تسویه شده">تسویه شده</option>
+                        <option value="تسویه نشده">تسویه نشده</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="edit_payer" class="block text-sm font-medium text-gray-700">پرداخت کننده:</label>
+                    <input type="text" id="edit_payer" name="payer"
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div class="md:col-span-2 rounded-lg border bg-gray-50 p-3">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">ارتباط با ساختار شکست پروژه:</label>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span id="edit_wbs_count_display" class="text-sm text-gray-700">بدون ارتباط با ساختار شکست</span>
+                        <button type="button" id="open_edit_wbs_dialog" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">ویرایش ارتباط‌های ساختار شکست</button>
+                    </div>
+                    <p id="edit_wbs_summary" class="text-xs text-gray-500 mt-2"></p>
+                    <div id="edit_wbs_hidden_fields"></div>
+                    <input type="hidden" id="edit_wbs_count" name="wbs_link_count" value="0">
+                </div>
+                <div class="md:col-span-2 flex flex-col sm:flex-row sm:items-center gap-4 pt-2">
+                    <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="edit_personal_manager_payment" name="personal_manager_payment" value="1"
+                               class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>پرداختی شخصی مدیر</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+                        <input type="checkbox" id="edit_exclude_manager_calculation" name="exclude_manager_calculation" value="1"
+                               class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>عدم محاسبه برای مدیر</span>
+                    </label>
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 space-x-reverse mt-4">
+                <button type="submit" class="bg-green-600 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-green-700">ذخیره</button>
+                <button type="button" onclick="closeEditModal()" class="bg-gray-400 text-white font-semibold py-2 px-4 rounded-lg text-sm hover:bg-gray-500">انصراف</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<dialog id="editWbsDialog" class="w-[min(96vw,900px)] max-h-[88vh] rounded-xl p-0 shadow-2xl backdrop:bg-black/60">
+    <div class="p-5">
+        <div class="flex items-start justify-between gap-4 mb-3">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">ارتباط‌های ساختار شکست</h2>
+                <p class="text-sm text-gray-600 mt-1">تعداد را تغییر دهید، ردیف اضافه یا حذف کنید و ارتباط‌ها را ویرایش کنید.</p>
+            </div>
+            <button type="button" id="close_edit_wbs_dialog" class="text-2xl leading-none text-gray-500" aria-label="بستن">&times;</button>
+        </div>
+        <div class="flex items-center gap-2 mb-4">
+            <label for="edit_wbs_modal_count" class="text-sm font-medium">تعداد ارتباط‌ها:</label>
+            <input type="number" id="edit_wbs_modal_count" min="0" step="1" value="0" class="w-24 p-2 border rounded text-sm">
+            <button type="button" id="add_edit_wbs_row" class="px-3 py-2 rounded bg-indigo-100 text-indigo-800 text-sm">افزودن ردیف</button>
+        </div>
+        <div id="edit_wbs_rows" class="space-y-3 max-h-[54vh] overflow-y-auto"></div>
+        <p id="edit_wbs_modal_empty" class="hidden text-sm text-gray-500 text-center py-5">این هزینه بدون ارتباط با ساختار شکست ذخیره خواهد شد.</p>
+        <div class="flex justify-end gap-2 mt-5">
+            <button type="button" id="cancel_edit_wbs_dialog" class="px-4 py-2 rounded bg-gray-200">انصراف</button>
+            <button type="button" id="save_edit_wbs_dialog" class="px-4 py-2 rounded bg-indigo-600 text-white">تأیید ارتباط‌ها</button>
+        </div>
+    </div>
+</dialog>
+
+<!-- Receipt Modal -->
+<div id="receiptModal" class="modal">
+    <span class="close" onclick="closeReceiptModal()">&times;</span>
+    <div id="receiptModalContent" class="modal-content">
+        <!-- Receipt content will be loaded here -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="/static/jquery.min.js"></script>
+<script src="/static/kamadatepicker.min.js"></script>
+<script>
+    const editWbsOptions = {{ wbs_options|tojson }};
+
+    // تابع کمکی برای جدا کردن ارقام با کاما
+    function formatNumber(number) {
+        if (typeof number !== 'number' || isNaN(number)) {
+            return '';
+        }
+        return number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+    
+    // محاسبه جمع مبالغ و سهم مدیر برای ردیف‌های قابل مشاهده
+    function updateTotals() {
+        let totalAmount = 0;
+        let personalAmount = 0;
+        let excludedAmount = 0;
+        let managerShare = 0;
+
+        document.querySelectorAll('#reportTableBody .report-item').forEach(row => {
+            if (row.style.display === 'none') return;
+
+            const amount = removeNumberFormatting(row.dataset.totalAmount);
+            const personal = row.dataset.personalManagerPayment === '1' || row.dataset.personalManagerPayment === 'true';
+            const excluded = row.dataset.excludeManagerCalculation === '1' || row.dataset.excludeManagerCalculation === 'true';
+            const settled = row.dataset.settlementStatus === 'تسویه شده';
+
+            totalAmount += amount;
+            if (personal) personalAmount += amount;
+            if (excluded) excludedAmount += amount;
+
+            if (settled) {
+                if (excluded) {
+                    if (personal) managerShare += amount;
+                } else {
+                    managerShare += amount * 0.10;
+                    if (personal) managerShare += amount;
+                }
+            }
+        });
+
+        document.getElementById('total-amount-sum').textContent = formatNumber(totalAmount);
+        document.getElementById('personal-manager-sum').textContent = formatNumber(personalAmount);
+        document.getElementById('excluded-manager-sum').textContent = formatNumber(excludedAmount);
+        const managerShareElement = document.getElementById('manager-share-sum');
+        if (managerShareElement) managerShareElement.textContent = formatNumber(managerShare);
+    }
+
+    document.getElementById('reportTableBody').addEventListener('click', event => {
+        const button = event.target.closest('.report-wbs-code');
+        document.querySelectorAll('.report-wbs-tooltip').forEach(tooltip => tooltip.classList.add('hidden'));
+        document.querySelectorAll('.report-wbs-code').forEach(codeButton => codeButton.setAttribute('aria-expanded', 'false'));
+        if (!button) return;
+        const tooltip = button.parentElement.querySelector('.report-wbs-tooltip');
+        tooltip.classList.remove('hidden');
+        button.setAttribute('aria-expanded', 'true');
+    });
+
+    document.addEventListener('click', event => {
+        if (event.target.closest('.report-wbs-code')) return;
+        document.querySelectorAll('.report-wbs-tooltip').forEach(tooltip => tooltip.classList.add('hidden'));
+        document.querySelectorAll('.report-wbs-code').forEach(button => button.setAttribute('aria-expanded', 'false'));
+    });
+
+    function showReceiptModal(filePath) {
+        const modal = document.getElementById("receiptModal");
+        const modalContent = document.getElementById("receiptModalContent");
+        
+        modalContent.innerHTML = ''; // Clear previous content
+        
+        if (filePath && filePath.toLowerCase().endsWith('.pdf')) {
+            const embed = document.createElement('embed');
+            embed.src = filePath;
+            embed.type = 'application/pdf';
+            embed.style.width = '100%';
+            embed.style.height = '80vh';
+            modalContent.appendChild(embed);
+        } else if (filePath) {
+            const img = document.createElement('img');
+            img.src = filePath;
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            modalContent.appendChild(img);
+        } else {
+            const message = document.createElement('p');
+            message.textContent = "عکس رسید موجود نیست";
+            message.style.color = '#fff';
+            message.style.textAlign = 'center';
+            message.style.marginTop = '20px';
+            modalContent.appendChild(message);
+        }
+        
+        modal.style.display = "flex";
+    }
+
+    function closeReceiptModal() {
+        document.getElementById("receiptModal").style.display = "none";
+    }
+    
+    // توابع کمکی برای مدیریت مطمئن اعداد فارسی/انگلیسی و جداکننده‌ها
+    function normalizeNumberString(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+            .replace(/[٬,\s]/g, '')
+            .replace(/٫/g, '.');
+    }
+
+    function removeNumberFormatting(value) {
+        const normalized = normalizeNumberString(value);
+        const number = parseFloat(normalized);
+        return Number.isFinite(number) ? number : 0;
+    }
+
+    // تابع محاسبه و بروزرسانی مبلغ کل
+    function calculateEditTotalAmount() {
+        const amount = removeNumberFormatting(document.getElementById('edit_amount').value);
+        const unitPrice = removeNumberFormatting(document.getElementById('edit_unit_price').value);
+        const discount = parseFloat(removeNumberFormatting(document.getElementById('edit_discount').value)) || 0;
+        
+        let totalAmount = (amount * unitPrice) - discount;
+        
+        document.getElementById('edit_total_amount').value = formatNumber(totalAmount);
+    }
+
+    let editWbsLinks = [];
+    let editWbsBaseProgress = {};
+    let editWbsRecordId = null;
+    let editWbsRequestVersion = 0;
+    let editWbsConfirmedCount = 0;
+
+    function readEditWbsRows() {
+        return [...document.querySelectorAll('#edit_wbs_rows .edit-wbs-row')].map(row => ({
+            wbs_code: row.querySelector('select').value,
+            wbs_coverage_percent: row.querySelector('input[type="number"]').value
+        }));
+    }
+
+    function updateEditWbsProgress(row) {
+        const code = row.querySelector('select').value;
+        const contribution = Number(row.querySelector('input[type="number"]').value) || 0;
+        const base = Number(editWbsBaseProgress[code]) || 0;
+        const total = Math.min(100, base + contribution);
+        row.querySelector('.edit-wbs-progress').textContent = code
+            ? `درصد انجام‌شده فعلی با احتساب این هزینه: ${Number(total.toFixed(2))}%`
+            : 'برای مشاهدهٔ پیشرفت، ابتدا بخش را انتخاب کنید.';
+    }
+
+    function renderEditWbsRows(links) {
+        const container = document.getElementById('edit_wbs_rows');
+        const empty = document.getElementById('edit_wbs_modal_empty');
+        container.replaceChildren();
+        empty.classList.toggle('hidden', links.length > 0);
+
+        links.forEach((link, index) => {
+            const row = document.createElement('div');
+            row.className = 'edit-wbs-row grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(130px,1fr)_minmax(190px,1.5fr)_auto] gap-3 items-end border rounded-lg p-3';
+
+            const selectLabel = document.createElement('label');
+            selectLabel.className = 'text-sm';
+            selectLabel.append(`بخش ساختار شکست ${index + 1}`);
+            const select = document.createElement('select');
+            select.className = 'block w-full p-2 border rounded text-sm';
+            select.required = true;
+            select.add(new Option('انتخاب بخش', ''));
+            editWbsOptions.forEach(option => {
+                const text = `${option.wbs_code} - ${option.activity}${option.unit ? ` (${option.unit})` : ''}`;
+                select.add(new Option(text, option.wbs_code));
+            });
+            select.value = link.wbs_code || '';
+            selectLabel.appendChild(select);
+
+            const coverageLabel = document.createElement('label');
+            coverageLabel.className = 'text-sm';
+            coverageLabel.append('درصد پوشش این هزینه:');
+            const coverage = document.createElement('input');
+            coverage.type = 'number';
+            coverage.min = '0';
+            coverage.max = '100';
+            coverage.step = '0.01';
+            coverage.required = true;
+            coverage.value = link.wbs_coverage_percent ?? 0;
+            coverage.className = 'block w-full p-2 border rounded text-sm';
+            coverageLabel.appendChild(coverage);
+
+            const progress = document.createElement('p');
+            progress.className = 'edit-wbs-progress text-xs text-gray-700';
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'px-3 py-2 rounded bg-red-100 text-red-700 text-sm';
+            remove.textContent = 'حذف';
+            remove.addEventListener('click', () => {
+                const next = readEditWbsRows();
+                next.splice(index, 1);
+                document.getElementById('edit_wbs_modal_count').value = next.length;
+                renderEditWbsRows(next);
+            });
+
+            select.addEventListener('change', () => updateEditWbsProgress(row));
+            coverage.addEventListener('input', () => updateEditWbsProgress(row));
+            row.append(selectLabel, coverageLabel, progress, remove);
+            container.appendChild(row);
+            updateEditWbsProgress(row);
+        });
+        document.getElementById('edit_wbs_modal_count').value = links.length;
+    }
+
+    function syncEditWbsHiddenFields(links) {
+        const container = document.getElementById('edit_wbs_hidden_fields');
+        container.replaceChildren();
+        links.forEach(link => {
+            for (const [name, value] of [
+                ['wbs_code[]', link.wbs_code],
+                ['wbs_coverage_percent[]', link.wbs_coverage_percent]
+            ]) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = name;
+                input.value = value;
+                container.appendChild(input);
+            }
+        });
+        document.getElementById('edit_wbs_count').value = links.length;
+        document.getElementById('edit_wbs_count_display').textContent = links.length
+            ? `${links.length} بخش مرتبط`
+            : 'بدون ارتباط با ساختار شکست';
+        document.getElementById('edit_wbs_summary').textContent = links.map(link =>
+            `${link.wbs_code} (${Number(link.wbs_coverage_percent)}٪ پوشش)`
+        ).join('، ');
+    }
+
+    async function loadEditWbsBaseProgress(recordId) {
+        const requestVersion = ++editWbsRequestVersion;
+        editWbsBaseProgress = {};
+        try {
+            const response = await fetch(`/api/project_progress_data?exclude_petty_cash_id=${encodeURIComponent(recordId)}`);
+            if (!response.ok) throw new Error('دریافت پیشرفت پروژه ناموفق بود.');
+            const data = await response.json();
+            if (requestVersion !== editWbsRequestVersion) return;
+            (data.items || []).forEach(item => {
+                editWbsBaseProgress[item.wbs_code] = Number(item.coverage_percent) || 0;
+            });
+            document.querySelectorAll('#edit_wbs_rows .edit-wbs-row').forEach(updateEditWbsProgress);
+        } catch (error) {
+            console.error(error);
+            document.querySelectorAll('#edit_wbs_rows .edit-wbs-progress').forEach(node => {
+                node.textContent = 'درصد پیشرفت فعلی بارگذاری نشد.';
+            });
+        }
+    }
+
+    function openEditWbsDialog() {
+        renderEditWbsRows(editWbsLinks.map(link => ({...link})));
+        document.getElementById('editWbsDialog').showModal();
+    }
+
+    document.getElementById('open_edit_wbs_dialog').addEventListener('click', openEditWbsDialog);
+    document.getElementById('close_edit_wbs_dialog').addEventListener('click', () => document.getElementById('editWbsDialog').close());
+    document.getElementById('cancel_edit_wbs_dialog').addEventListener('click', () => document.getElementById('editWbsDialog').close());
+    document.getElementById('add_edit_wbs_row').addEventListener('click', () => {
+        const links = readEditWbsRows();
+        links.push({wbs_code: '', wbs_coverage_percent: 0});
+        renderEditWbsRows(links);
+    });
+    document.getElementById('edit_wbs_modal_count').addEventListener('change', event => {
+        const count = Number(event.target.value);
+        if (!Number.isInteger(count) || count < 0) {
+            event.target.setCustomValidity('تعداد باید عدد صحیح و صفر یا بیشتر باشد.');
+            event.target.reportValidity();
+            return;
+        }
+        event.target.setCustomValidity('');
+        if (count > editWbsOptions.length) {
+            event.target.value = editWbsOptions.length;
+        }
+        const links = readEditWbsRows().slice(0, Number(event.target.value));
+        while (links.length < Number(event.target.value)) links.push({wbs_code: '', wbs_coverage_percent: 0});
+        renderEditWbsRows(links);
+    });
+    document.getElementById('save_edit_wbs_dialog').addEventListener('click', () => {
+        const links = readEditWbsRows().map(link => ({
+            wbs_code: link.wbs_code,
+            wbs_coverage_percent: Number(link.wbs_coverage_percent)
+        }));
+        const codes = links.map(link => link.wbs_code);
+        if (links.some(link => !link.wbs_code || !Number.isFinite(link.wbs_coverage_percent) || link.wbs_coverage_percent < 0 || link.wbs_coverage_percent > 100)) {
+            alert('برای همه ردیف‌ها بخش معتبر و درصد بین ۰ تا ۱۰۰ وارد کنید.');
+            return;
+        }
+        if (new Set(codes).size !== codes.length) {
+            alert('هر بخش ساختار شکست فقط یک‌بار قابل انتخاب است.');
+            return;
+        }
+        editWbsLinks = links;
+        editWbsConfirmedCount = links.length;
+        syncEditWbsHiddenFields(links);
+        document.getElementById('editWbsDialog').close();
+    });
+    document.getElementById('edit-petty-cash-form').addEventListener('submit', event => {
+        if (Number(document.getElementById('edit_wbs_count').value) !== editWbsConfirmedCount) {
+            event.preventDefault();
+            alert('ابتدا ارتباط‌های ساختار شکست را در پنجرهٔ جزئیات تأیید کنید.');
+        }
+    });
+    
+    // Functions for the edit modal
+    function openEditModal(button) {
+        const row = button.closest('tr');
+        const recordData = row.dataset;
+        
+        // Populate the modal form
+        document.getElementById('edit_id').value = recordData.id;
+        document.getElementById('edit_date_fa').value = recordData.date;
+        document.getElementById('edit_description').value = recordData.description;
+        document.getElementById('edit_unit').value = recordData.unit;
+        document.getElementById('edit_amount').value = formatNumber(removeNumberFormatting(recordData.amount)) || '';
+        document.getElementById('edit_unit_price').value = formatNumber(removeNumberFormatting(recordData.unitPrice)) || '';
+        document.getElementById('edit_discount').value = recordData.discount || '0';
+        document.getElementById('edit_total_amount').value = formatNumber(removeNumberFormatting(recordData.totalAmount));
+        document.getElementById('edit_location').value = recordData.location;
+        document.getElementById('edit_notes').value = recordData.notes;
+        document.getElementById('edit_source').value = recordData.source;
+        document.getElementById('edit_invoice_number').value = recordData.invoiceNumber;
+        document.getElementById('edit_settlement_status').value = recordData.settlementStatus;
+        document.getElementById('edit_payer').value = recordData.payer;
+        try {
+            editWbsLinks = JSON.parse(recordData.wbsLinks || '[]');
+        } catch (error) {
+            console.error('Could not read saved WBS links:', error);
+            editWbsLinks = [];
+        }
+        if (!editWbsLinks.length && recordData.wbsCode) {
+            editWbsLinks = [{wbs_code: recordData.wbsCode, wbs_coverage_percent: Number(recordData.wbsCoveragePercent) || 0}];
+        }
+        editWbsRecordId = recordData.id;
+        editWbsConfirmedCount = editWbsLinks.length;
+        syncEditWbsHiddenFields(editWbsLinks);
+        loadEditWbsBaseProgress(recordData.id);
+        document.getElementById('edit_personal_manager_payment').checked = recordData.personalManagerPayment === '1' || recordData.personalManagerPayment === 'true';
+        document.getElementById('edit_exclude_manager_calculation').checked = recordData.excludeManagerCalculation === '1' || recordData.excludeManagerCalculation === 'true';
+    
+        // Set the form action URL
+        const editForm = document.getElementById('edit-petty-cash-form');
+        editForm.action = `/edit_petty_cash/${recordData.id}`;
+    
+        // Show the modal
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'flex';
+        
+        // Initialize the datepicker for the modal input
+        kamaDatepicker('edit_date_fa', {
+            forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        
+        // Attach event listeners for auto-calculation
+        document.getElementById('edit_amount').addEventListener('input', calculateEditTotalAmount);
+        document.getElementById('edit_unit_price').addEventListener('input', calculateEditTotalAmount);
+        document.getElementById('edit_discount').addEventListener('input', calculateEditTotalAmount);
+
+        // Add event listeners for editable total amount
+        const totalAmountInput = document.getElementById('edit_total_amount');
+        totalAmountInput.addEventListener('dblclick', function() {
+            totalAmountInput.readOnly = false;
+            totalAmountInput.classList.remove('bg-gray-100');
+            totalAmountInput.value = removeNumberFormatting(totalAmountInput.value);
+        });
+        totalAmountInput.addEventListener('blur', function() {
+            totalAmountInput.readOnly = true;
+            totalAmountInput.classList.add('bg-gray-100');
+            const unformattedValue = removeNumberFormatting(totalAmountInput.value);
+            const formattedValue = formatNumber(unformattedValue);
+            totalAmountInput.value = formattedValue;
+        });
+        
+    }
+    
+    function closeEditModal() {
+        const modal = document.getElementById('editModal');
+        modal.style.display = 'none';
+    }
+    
+    // Close modal when clicking outside of it
+    window.addEventListener('click', (event) => {
+        const modal = document.getElementById('editModal');
+        if (event.target == modal) {
+            closeEditModal();
+        }
+    });
+    
+    // Initialize datepickers for filter inputs
+    document.addEventListener('DOMContentLoaded', () => {
+        kamaDatepicker('start_date_filter', {
+           forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        kamaDatepicker('end_date_filter', {
+           forceSelected: true,
+            buttonsColor: "red",
+            forceFarsiDigits: true,
+            markToday:true,
+            markHolidays:true,
+            gotoToday:true,
+            closeAfterSelect:true
+        });
+        updateTotals();
+
+        // New real-time search functionality
+        const searchInput = document.getElementById('description_search');
+        const tableBody = document.getElementById('reportTableBody');
+        const rows = tableBody.querySelectorAll('tr');
+
+        searchInput.addEventListener('input', () => {
+            const filter = searchInput.value.toLowerCase();
+            
+            rows.forEach(row => {
+                const descriptionCell = row.querySelector('.description-cell');
+                if (descriptionCell) {
+                    const text = descriptionCell.textContent.toLowerCase();
+                    if (text.includes(filter)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                }
+            });
+            updateTotals();
+        });
+
+        // Handle export button click
+        const exportLink = document.getElementById('export-link');
+        exportLink.addEventListener('click', (event) => {
+            event.preventDefault();
+
+            // Get filter values
+            const startDate = document.getElementById('start_date_filter').value;
+            const endDate = document.getElementById('end_date_filter').value;
+            const payer = document.getElementById('payer_filter').value;
+            const settlementStatus = document.getElementById('settlement_status_filter').value;
+            const personalManagerPayment = document.getElementById('personal_manager_payment_filter').checked;
+            const excludeManagerCalculation = document.getElementById('exclude_manager_calculation_filter').checked;
+            const descriptionSearch = document.getElementById('description_search').value;
+
+            // Build query string. Unchecked means "all", so only send an active filter.
+            const params = new URLSearchParams();
+            if (startDate) params.append('start_date', startDate);
+            if (endDate) params.append('end_date', endDate);
+            if (payer) params.append('payer_filter', payer);
+            if (settlementStatus) params.append('settlement_status_filter', settlementStatus);
+            if (personalManagerPayment) params.append('personal_manager_payment_filter', 'yes');
+            if (excludeManagerCalculation) params.append('exclude_manager_calculation_filter', 'yes');
+            if (descriptionSearch) params.append('description_search', descriptionSearch);
+
+            window.location.href = `/export/petty_cash_reports?${params.toString()}`;
+        });
+    });
+</script>
+{% endblock %}
