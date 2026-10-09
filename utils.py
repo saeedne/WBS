@@ -1,22 +1,177 @@
-from flask import Flask, session
+from flask import Flask, has_request_context, session
 import sqlite3
+import os
 from datetime import datetime
 import json
 from functools import wraps
 import jdatetime
 
-DB_FILE = 'time_tracker.db'
-UPLOAD_FOLDER = 'static/uploads'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, 'time_tracker.db')
+PROJECT_DB_DIR = os.path.join(BASE_DIR, 'project_databases')
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
+PROJECT_UPLOAD_FOLDER = os.path.join(BASE_DIR, 'project_uploads')
 
-def get_db_connection():
-    """Establishes a connection to the SQLite database."""
+def get_auth_db_connection():
+    """Connect to the shared database containing accounts and project registry."""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_db():
+
+def get_project_db_path(project_id):
+    """Return the SQLite path for a project; project 1 keeps the original DB."""
+    project_id = int(project_id)
+    if project_id == 1:
+        return DB_FILE
+    return os.path.join(PROJECT_DB_DIR, f'project_{project_id}.db')
+
+
+def get_db_connection(project_id=None):
+    """Connect to the active project's isolated SQLite database."""
+    if project_id is None:
+        project_id = 1
+        if has_request_context():
+            project_id = session.get('active_project_id', 1)
+    db_path = get_project_db_path(project_id)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def list_projects():
+    conn = get_auth_db_connection()
+    try:
+        return conn.execute('SELECT id, name FROM projects ORDER BY id').fetchall()
+    finally:
+        conn.close()
+
+
+def get_project_name(project_id):
+    if not project_id:
+        return None
+    conn = get_auth_db_connection()
+    try:
+        row = conn.execute('SELECT name FROM projects WHERE id = ?', (int(project_id),)).fetchone()
+        return row['name'] if row else None
+    finally:
+        conn.close()
+
+
+def get_user_project_id(username):
+    project_ids = get_user_project_ids(username)
+    return project_ids[0] if project_ids else None
+
+
+def get_user_project_ids(username):
+    conn = get_auth_db_connection()
+    try:
+        rows = conn.execute(
+            'SELECT project_id FROM user_projects WHERE username = ? ORDER BY project_id',
+            (username,)
+        ).fetchall()
+        return [row['project_id'] for row in rows]
+    finally:
+        conn.close()
+
+
+def init_project_registry():
+    """Create the shared project registry and attach legacy users to طرقبه."""
+    conn = get_auth_db_connection()
+    try:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS user_projects (
+                username TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
+                PRIMARY KEY (username, project_id),
+                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        ''')
+        project_map_info = conn.execute('PRAGMA table_info(user_projects)').fetchall()
+        project_map_pk = [row['name'] for row in sorted(project_map_info, key=lambda item: item['pk']) if row['pk']]
+        if project_map_pk == ['username']:
+            conn.execute('ALTER TABLE user_projects RENAME TO user_projects_legacy')
+            conn.execute('''
+                CREATE TABLE user_projects (
+                    username TEXT NOT NULL,
+                    project_id INTEGER NOT NULL,
+                    PRIMARY KEY (username, project_id),
+                    FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            ''')
+            conn.execute('''INSERT OR IGNORE INTO user_projects (username, project_id)
+                             SELECT username, project_id FROM user_projects_legacy''')
+            conn.execute('DROP TABLE user_projects_legacy')
+        conn.execute(
+            'INSERT OR IGNORE INTO projects (id, name, created_at) VALUES (1, ?, ?)',
+            ('طرقبه', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        )
+        conn.execute('''
+            INSERT OR IGNORE INTO user_projects (username, project_id)
+            SELECT username, 1 FROM users WHERE role != 'admin'
+        ''')
+        conn.execute('''
+            DELETE FROM user_projects
+            WHERE username IN (SELECT username FROM users WHERE role = 'admin')
+        ''')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_project(name):
+    name = (name or '').strip()
+    if not name:
+        raise ValueError('نام پروژه را وارد کنید.')
+
+    conn = get_auth_db_connection()
+    try:
+        if conn.execute('SELECT 1 FROM projects WHERE name = ? COLLATE NOCASE', (name,)).fetchone():
+            raise ValueError('پروژه‌ای با این نام از قبل وجود دارد.')
+        project_id = conn.execute('SELECT COALESCE(MAX(id), 0) + 1 FROM projects').fetchone()[0]
+        db_path = get_project_db_path(project_id)
+        if os.path.exists(db_path):
+            raise ValueError('پوشهٔ دادهٔ این پروژه از قبل وجود دارد؛ با پشتیبانی تماس بگیرید.')
+        init_db(db_path=db_path, seed_users=False)
+        conn.execute(
+            'INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)',
+            (project_id, name, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        )
+        conn.commit()
+        return project_id
+    finally:
+        conn.close()
+
+
+def get_project_upload_folder(project_id=None):
+    if project_id is None:
+        project_id = session.get('active_project_id', 1) if has_request_context() else 1
+    folder = os.path.join(PROJECT_UPLOAD_FOLDER, str(int(project_id)))
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def get_project_upload_url(filename, project_id=None):
+    if project_id is None:
+        project_id = session.get('active_project_id', 1) if has_request_context() else 1
+    return f'/project_uploads/{int(project_id)}/{filename}'
+
+def init_db(db_path=None, seed_users=True):
     """Initializes the database schema if it doesn't exist."""
-    conn = get_db_connection()
+    db_path = db_path or get_project_db_path(1)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
     # Create tables
@@ -261,8 +416,12 @@ def init_db():
     conn.commit()
     conn.close()
 
+    if not seed_users:
+        return
+
     # Create admin user if not exists
-    conn = get_db_connection()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
         admin_exists = conn.execute("SELECT 1 FROM users WHERE username = 'admin'").fetchone()
         if not admin_exists:

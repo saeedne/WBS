@@ -152,10 +152,22 @@ def init_petty_cash_routes(app):
             records = conn.execute('''
                 SELECT * FROM petty_cash ORDER BY timestamp DESC
             ''').fetchall()
-            users = conn.execute("SELECT username, name, role FROM users ORDER BY name").fetchall()
             wbs_options = conn.execute("SELECT wbs_code, activity, unit, weight_percent FROM project_wbs ORDER BY sort_order, id").fetchall()
         finally:
             conn.close()
+
+        users_conn = utils.get_auth_db_connection()
+        try:
+            users = users_conn.execute(
+                '''SELECT DISTINCT u.username, u.name, u.role
+                   FROM users u
+                   LEFT JOIN user_projects up ON up.username = u.username
+                   WHERE u.role = 'admin' OR up.project_id = ?
+                   ORDER BY u.name''',
+                (session.get('active_project_id', 1),)
+            ).fetchall()
+        finally:
+            users_conn.close()
         
         return render_template('petty_cash.html', records=records, users=users, wbs_options=wbs_options)
 
@@ -194,16 +206,13 @@ def init_petty_cash_routes(app):
             receipt_image = request.files.get('receipt_image')
             image_path = None
             if receipt_image and receipt_image.filename != '':
-                if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                    os.makedirs(app.config['UPLOAD_FOLDER'])
-                
                 filename = str(uuid.uuid4()) + os.path.splitext(receipt_image.filename)[1]
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                filepath = os.path.join(utils.get_project_upload_folder(), filename)
                 
                 with open(filepath, 'wb') as f:
                     f.write(receipt_image.read())
                 
-                image_path = '/static/uploads/' + filename
+                image_path = utils.get_project_upload_url(filename)
             
             shamsi_dt = jdatetime.datetime.strptime(f'{date_fa}', '%Y/%m/%d')
             miladi_dt = shamsi_dt.togregorian()

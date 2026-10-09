@@ -79,15 +79,12 @@ def init_daily_worker_routes(app):
 
                 receipt_image = request.files.get('receipt_image')
                 if receipt_image and receipt_image.filename != '':
-                    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                        os.makedirs(app.config['UPLOAD_FOLDER'])
-                    
                     filename = str(uuid.uuid4()) + os.path.splitext(receipt_image.filename)[1]
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    filepath = os.path.join(utils.get_project_upload_folder(), filename)
                     
                     receipt_image.save(filepath)
                     
-                    receipt_image_path = '/static/uploads/' + filename
+                    receipt_image_path = utils.get_project_upload_url(filename)
 
             conn.execute('''
                 INSERT INTO daily_workers (date, foreman_name, worker_count, daily_wage, transport_cost, total_amount, location, timestamp, notes, receipt_image_path)

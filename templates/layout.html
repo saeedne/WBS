@@ -1,14 +1,6 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
- {% if session.get('user') %}
-<div class="text-right text-sm text-gray-600 py-1">
-    کاربر جاری:
-    <span class="font-bold text-green-700">
-        {{ session['user']['username'] }}
-    </span>
-</div>
-{% endif %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#4f46e5">
@@ -87,6 +79,21 @@
     </button>
 
     <div class="container mx-auto px-4 pt-0 pb-8">
+        {% if session.get('user') %}
+        <div class="text-right text-sm text-gray-600 py-1 mb-3 flex flex-wrap justify-between gap-2">
+            <span>
+                کاربر جاری:
+                <span class="font-bold text-green-700">{{ session['user']['username'] }}</span>
+                {% if session.get('active_project_name') %}
+                    <span class="mx-2">|</span>
+                    پروژه: <span class="font-bold text-indigo-700">{{ session['active_project_name'] }}</span>
+                {% endif %}
+            </span>
+            {% if session['user'].get('role') == 'admin' and session.get('active_project_id') %}
+                <a href="{{ url_for('select_project') }}" class="text-indigo-700 hover:underline">تغییر پروژه</a>
+            {% endif %}
+        </div>
+        {% endif %}
         <!-- Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -96,7 +103,7 @@
         {% endif %}
         {% endwith %}
         
-        {% if session.get('user') and request.path != '/dashboard' and request.path != '/admin_dashboard' %}
+        {% if session.get('user') and request.path not in ['/dashboard', '/admin_dashboard', '/select_project'] %}
     <div class="flex justify-center mb-6">
         <a href="/dashboard" class="bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-amber-900 transition duration-300">
             بازگشت به داشبورد

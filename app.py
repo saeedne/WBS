@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, Response, session, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, jsonify, Response, session, flash, send_from_directory, abort
 import sqlite3
 import os
 import csv
@@ -41,7 +41,25 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 # Initialize modules
 utils.init_db()
+utils.init_project_registry()
 auth.init_auth_system(app)
+
+
+@app.route('/project_uploads/<int:project_id>/<path:filename>')
+@auth.login_required
+def project_upload(project_id, filename):
+    if session.get('active_project_id') != project_id:
+        abort(404)
+    return send_from_directory(utils.get_project_upload_folder(project_id), filename)
+
+
+@app.route('/static/uploads/<path:filename>')
+@auth.login_required
+def legacy_project_upload(filename):
+    # Legacy receipts for the original project were stored under Flask's static folder.
+    if session.get('active_project_id') != 1:
+        abort(404)
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 # Initialize all route files
 employees_routes.init_employees_routes(app)

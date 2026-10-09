@@ -1,4 +1,8 @@
 time_tracker.db
-WBS.zip
+time_tracker.db-shm
+time_tracker.db-wal
+project_databases/
+project_uploads/
 __pycache__/
-static/uploads/*
+uploads/
+WBS.zip
