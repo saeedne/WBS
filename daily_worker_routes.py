@@ -255,10 +255,10 @@ def init_daily_worker_routes(app):
         worksheet.right_to_left()
         
         # Define formats
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
-        total_format = workbook.add_format({'bold': True, 'num_format': '#,##0', 'align': 'center', 'border': 1})
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        number_format = utils.excel_add_format(workbook, {'num_format': '#,##0', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        total_format = utils.excel_add_format(workbook, {'num_format': '#,##0', 'border': 1})
         
         # Headers
         headers = ['ردیف', 'تاریخ', 'سرکارگر', 'تعداد نفرات', 'مزد روزانه', 'هزینه ایاب و ذهاب', 'مبلغ کل روز', 'محل انجام کار']
@@ -276,7 +276,7 @@ def init_daily_worker_routes(app):
             
             # Write data row, applying number format to relevant columns
             worksheet.write(row_num, 0, row_num, default_format)
-            worksheet.write(row_num, 1, record['date'], default_format)
+            worksheet.write(row_num, 1, utils.excel_date_text(record['date']), default_format)
             worksheet.write(row_num, 2, record['foreman_name'], default_format)
             
             # Write worker_count as a number if possible, otherwise as text
@@ -286,20 +286,23 @@ def init_daily_worker_routes(app):
                 worksheet.write(row_num, 3, record['worker_count'], default_format)
 
             # Write daily_wage as a number if possible, otherwise as text
-            if isinstance(record['daily_wage'], (int, float)):
-                worksheet.write(row_num, 4, record['daily_wage'], number_format)
+            daily_wage_value = utils.excel_numeric_value(record['daily_wage'])
+            if daily_wage_value is not None:
+                worksheet.write_number(row_num, 4, daily_wage_value, number_format)
             else:
                 worksheet.write(row_num, 4, record['daily_wage'], default_format)
             
             # Write transport_cost as a number if possible, otherwise as text
-            if isinstance(record['transport_cost'], (int, float)):
-                worksheet.write(row_num, 5, record['transport_cost'], number_format)
+            transport_value = utils.excel_numeric_value(record['transport_cost'])
+            if transport_value is not None:
+                worksheet.write_number(row_num, 5, transport_value, number_format)
             else:
                 worksheet.write(row_num, 5, record['transport_cost'], default_format)
 
             # Write total_amount as a number if possible, otherwise as text
-            if isinstance(record['total_amount'], (int, float)):
-                worksheet.write(row_num, 6, record['total_amount'], number_format)
+            total_value = utils.excel_numeric_value(record['total_amount'])
+            if total_value is not None:
+                worksheet.write_number(row_num, 6, total_value, number_format)
             else:
                 worksheet.write(row_num, 6, record['total_amount'], default_format)
 
@@ -311,8 +314,7 @@ def init_daily_worker_routes(app):
         worksheet.write(row_num, 3, total_worker_count, total_format)
         worksheet.write(row_num, 6, total_amount_sum, total_format)
         
-        # Autofit columns
-        worksheet.autofit()
+        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num, len(headers) - 1)
         
         workbook.close()
         output.seek(0)

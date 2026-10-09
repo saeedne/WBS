@@ -374,9 +374,9 @@ def init_employees_routes(app):
         worksheet.right_to_left()
 
         # Define formats
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
-        number_format = workbook.add_format({'align': 'center', 'border': 1, 'num_format': '#,##0'}) # For money/numbers
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        number_format = utils.excel_add_format(workbook, {'border': 1, 'num_format': '#,##0'})
 
         # UPDATED Headers to include new fields
         headers = [
@@ -406,7 +406,7 @@ def init_employees_routes(app):
             worksheet.write(row_num, 8, employee['national_code'], default_format) # NEW
             row_num += 1
 
-        worksheet.autofit()
+        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
         workbook.close()
         output.seek(0)
         
@@ -693,8 +693,8 @@ def init_employees_routes(app):
         worksheet.right_to_left()
         
         # Define formats
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
         
         # Headers
         headers = ['شماره پرسنلی', 'نام کارمند', 'عملیات', 'تاریخ', 'ساعت', 'شرایط', 'محل فعالیت', 'شرح فعالیت', 'مقدار فعالیت']
@@ -711,7 +711,7 @@ def init_employees_routes(app):
             worksheet.write(row_num, 0, record['employee_id'], default_format)
             worksheet.write(row_num, 1, record['name'], default_format)
             worksheet.write(row_num, 2, record['action'], default_format)
-            worksheet.write(row_num, 3, date_part, default_format)
+            worksheet.write(row_num, 3, utils.excel_date_text(date_part), default_format)
             worksheet.write(row_num, 4, time_part, default_format)
             worksheet.write(row_num, 5, record['condition'], default_format)
             worksheet.write(row_num, 6, record['activity_location'], default_format)
@@ -719,7 +719,7 @@ def init_employees_routes(app):
             worksheet.write(row_num, 8, record['activity_amount'], default_format)
             row_num += 1
 
-        worksheet.autofit()
+        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
 
         workbook.close()
         output.seek(0)
@@ -1051,9 +1051,9 @@ def init_employees_routes(app):
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
         
         # Define formats
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
-        link_format = workbook.add_format({'color': 'blue', 'underline': 1, 'align': 'center'})
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        link_format = utils.excel_add_format(workbook, {'color': 'blue', 'underline': 1})
         
         # Create Summary Worksheet
         summary_worksheet = workbook.add_worksheet('خلاصه')
@@ -1069,6 +1069,8 @@ def init_employees_routes(app):
             summary_worksheet.write(summary_row_num, 0, employee['employee_id'], default_format)
             summary_worksheet.write_url(summary_row_num, 1, f"internal:'{worksheet_name}'!A1", link_format, employee['name'])
             summary_row_num += 1
+
+        utils.style_xlsxwriter_worksheet(workbook, summary_worksheet, summary_row_num - 1, len(summary_headers) - 1)
 
         # Create individual worksheets for each employee
         for employee in employees:
@@ -1120,7 +1122,7 @@ def init_employees_routes(app):
                 worksheet.write(row_num, 0, record['employee_id'], default_format)
                 worksheet.write(row_num, 1, record['name'], default_format)
                 worksheet.write(row_num, 2, record['action'], default_format)
-                worksheet.write(row_num, 3, date_part, default_format)
+                worksheet.write(row_num, 3, utils.excel_date_text(date_part), default_format)
                 worksheet.write(row_num, 4, time_part, default_format)
                 worksheet.write(row_num, 5, record['condition'], default_format)
                 worksheet.write(row_num, 6, record['activity_location'], default_format)
@@ -1128,7 +1130,7 @@ def init_employees_routes(app):
                 worksheet.write(row_num, 8, record['activity_amount'], default_format)
                 row_num += 1
             
-            worksheet.autofit()
+            utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
         
         workbook.close()
         output.seek(0)

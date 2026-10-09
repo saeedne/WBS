@@ -245,8 +245,8 @@ def init_facilities_routes(app):
             worksheet.right_to_left()
             
             # Define formats
-            header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-            default_format = workbook.add_format({'align': 'center', 'border': 1})
+            header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+            default_format = utils.excel_add_format(workbook, {'border': 1})
             
             # Headers
             headers = ['شناسه', 'تاریخ', 'تاسیسات کار', 'نفر همراه', 'محل فعالیت', 'شرح فعالیت', 'مدت زمان', 'مواد و مصالح', 'محل تامین']
@@ -256,7 +256,7 @@ def init_facilities_routes(app):
             row_num = 1
             for record in records:
                 worksheet.write(row_num, 0, record['id'], default_format)
-                worksheet.write(row_num, 1, record['date'], default_format)
+                worksheet.write(row_num, 1, utils.excel_date_text(record['date']), default_format)
                 worksheet.write(row_num, 2, record['facility_name'], default_format)
                 worksheet.write(row_num, 3, record['companion_name'], default_format)
                 worksheet.write(row_num, 4, record['activity_location'], default_format)
@@ -266,8 +266,7 @@ def init_facilities_routes(app):
                 worksheet.write(row_num, 8, record['material_source'], default_format)
                 row_num += 1
 
-            # Autofit columns
-            worksheet.autofit()
+            utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
             
             workbook.close()
             output.seek(0)

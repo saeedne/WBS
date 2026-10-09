@@ -1618,6 +1618,8 @@ def _create_wbs_template():
                 vertical='center'
             )
 
+    utils.style_openpyxl_worksheet(ws)
+
     ws.row_dimensions[1].height = 25
 
     output = io.BytesIO()
@@ -1690,6 +1692,8 @@ def _create_current_wbs_export(conn):
         for cell in row:
             cell.alignment = Alignment(horizontal='right', vertical='center')
 
+    utils.style_openpyxl_worksheet(ws)
+
     ws.row_dimensions[1].height = 25
 
     output = io.BytesIO()
@@ -1745,6 +1749,8 @@ def _create_project_progress_export(conn):
     for row in ws.iter_rows(min_row=2, min_col=5, max_col=7):
         for cell in row:
             cell.number_format = '0.00'
+
+    utils.style_openpyxl_worksheet(ws)
 
     ws.freeze_panes = 'A2'
     ws.auto_filter.ref = ws.dimensions

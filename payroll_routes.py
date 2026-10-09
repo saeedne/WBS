@@ -472,17 +472,17 @@ def init_payroll_routes(app):
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
         
         # Define formats once
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'vcenter', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
-        text_format = workbook.add_format({'align': 'center', 'border': 1, 'num_format': '@'})
-        number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'border': 1})
-        float_format = workbook.add_format({'num_format': '0.00', 'align': 'center', 'border': 1})
-        red_bg = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
-        blue_bg = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#B4C6E7', 'font_color': '#0000FF'})
-        yellow_bg = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#ffefc7'})
-        orange_bg = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#ffcc99'})
-        compensable_bg = workbook.add_format({'bold': True, 'align': 'center', 'border': 1, 'bg_color': '#d9ead3'}) # New color for compensable days
-        bold_format = workbook.add_format({'bold': True, 'align': 'center', 'border': 1})
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        text_format = utils.excel_add_format(workbook, {'border': 1, 'num_format': '@'})
+        number_format = utils.excel_add_format(workbook, {'num_format': '#,##0', 'border': 1})
+        float_format = utils.excel_add_format(workbook, {'num_format': '0.00', 'border': 1})
+        red_bg = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#FFC7CE', 'font_color': '#9C0006'})
+        blue_bg = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#B4C6E7', 'font_color': '#0000FF'})
+        yellow_bg = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#ffefc7'})
+        orange_bg = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#ffcc99'})
+        compensable_bg = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#d9ead3'})
+        bold_format = utils.excel_add_format(workbook, {'border': 1})
         
         # --- Function to write employee-specific data (Detailed Sheet) ---
         
@@ -495,7 +495,7 @@ def init_payroll_routes(app):
                 worksheet.write(0, col_num, header, header_format)
             
             row_num = 1
-            worksheet.merge_range(f'A{row_num+1}:I{row_num+1}', f'گزارش کارکرد {result["name"]} در بازه {start_date_fa} تا {end_date_fa}', header_format)
+            worksheet.merge_range(f'A{row_num+1}:I{row_num+1}', f'گزارش کارکرد {result["name"]} در بازه {utils.excel_date_text(start_date_fa)} تا {utils.excel_date_text(end_date_fa)}', header_format)
             row_num += 1
 
             for date, summary in result['daily_summary'].items():
@@ -528,7 +528,7 @@ def init_payroll_routes(app):
                 
                 worksheet.write(row_num, 0, result['employee_id'], row_format)
                 worksheet.write(row_num, 1, result['name'], row_format)
-                worksheet.write(row_num, 2, date, row_format)
+                worksheet.write(row_num, 2, utils.excel_date_text(date), row_format)
                 worksheet.write(row_num, 3, get_day_of_week_fa(date), row_format)
                 
                 
@@ -652,6 +652,9 @@ def init_payroll_routes(app):
             worksheet.set_page_view(view=2)
             worksheet.print_area(0, 0, last_row, len(headers) - 1) 
             worksheet.fit_to_pages(1, 1)
+            utils.style_xlsxwriter_worksheet(
+                workbook, worksheet, last_row, len(headers) - 1, autofit=False
+            )
         
         # --- Write data to Excel file ---
         
@@ -659,7 +662,8 @@ def init_payroll_routes(app):
             # If no data, create a single sheet and show a message
             worksheet = workbook.add_worksheet('گزارش حقوق')
             worksheet.right_to_left()
-            worksheet.write(0, 0, "برای این بازه زمانی اطلاعاتی یافت نشد.")
+            worksheet.write(0, 0, "برای این بازه زمانی اطلاعاتی یافت نشد.", utils.excel_add_format(workbook, {'border': 1}))
+            utils.style_xlsxwriter_worksheet(workbook, worksheet, 0, 0, autofit=False)
         else:
             
             # 1. Create Detail Sheet for each employee
@@ -740,8 +744,9 @@ def init_payroll_routes(app):
                 
                 summary_row += 1
             
-            # Autofit summary sheet columns
-            summary_worksheet.autofit()
+            utils.style_xlsxwriter_worksheet(
+                workbook, summary_worksheet, summary_row - 1, len(summary_headers) - 1
+            )
             summary_worksheet.set_paper(9)
             summary_worksheet.set_page_view(view=2)
             summary_worksheet.print_area(0, 0, summary_row - 1, len(summary_headers) - 1)

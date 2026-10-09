@@ -460,11 +460,11 @@ def init_petty_cash_routes(app):
         worksheet.right_to_left()
         
         # Define formats
-        header_format = workbook.add_format({'bold': True, 'text_wrap': True, 'valign': 'top', 'align': 'center', 'fg_color': '#D7E4BC', 'border': 1})
-        number_format = workbook.add_format({'num_format': '#,##0', 'align': 'center', 'border': 1})
-        default_format = workbook.add_format({'align': 'center', 'border': 1})
-        total_format = workbook.add_format({'bold': True, 'num_format': '#,##0', 'align': 'center', 'border': 1})
-        total_label_format = workbook.add_format({'bold': True, 'align': 'right', 'border': 1})
+        header_format = utils.excel_add_format(workbook, {'text_wrap': True, 'fg_color': '#D7E4BC', 'border': 1})
+        number_format = utils.excel_add_format(workbook, {'num_format': '#,##0', 'border': 1})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        total_format = utils.excel_add_format(workbook, {'num_format': '#,##0', 'border': 1})
+        total_label_format = utils.excel_add_format(workbook, {'border': 1})
         
         # Headers
         headers = ['ردیف','تاریخ', 'شرح', 'واحد', 'مقدار', 'فی', 'تخفیف', 'مبلغ کل', 'محل استفاده', 'توضیحات', 'محل تامین', 'شماره فاکتور', 'وضعیت تسویه', 'پرداخت کننده']
@@ -488,7 +488,7 @@ def init_petty_cash_routes(app):
             
             # Write data row, applying number format to relevant columns
             worksheet.write(row_num, 0, row_num, default_format)
-            worksheet.write(row_num, 1, record['date'], default_format)
+            worksheet.write(row_num, 1, utils.excel_date_text(record['date']), default_format)
             worksheet.write(row_num, 2, description, default_format)
             worksheet.write(row_num, 3, record['unit'], default_format)
             worksheet.write(row_num, 4, quantity, number_format)
@@ -523,8 +523,7 @@ def init_petty_cash_routes(app):
             worksheet.write(row_num, 7, value, total_format)
             row_num += 1
         
-        # Autofit columns
-        worksheet.autofit()
+        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
         
         workbook.close()
         output.seek(0)

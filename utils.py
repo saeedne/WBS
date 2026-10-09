@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime
 import json
 from functools import wraps
+from numbers import Number
 import jdatetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +15,187 @@ PROJECT_DB_DIR = os.path.join(BASE_DIR, 'project_databases')
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 PROJECT_UPLOAD_FOLDER = os.path.join(BASE_DIR, 'project_uploads')
 PROJECT_EXPORT_FOLDER = os.path.join(BASE_DIR, 'project_exports')
+
+
+def excel_add_format(workbook, properties=None):
+    """Create a standard project export cell format."""
+    options = {'text_wrap': True}
+    options.update(properties or {})
+    options.update({
+        'font_name': 'B Nazanin',
+        'bold': False,
+        'align': 'center',
+        'valign': 'vcenter',
+        'border': 0,
+    })
+    return workbook.add_format(options)
+
+
+def is_excel_money_field(name, table_name=None):
+    """Recognize monetary column names for consistent number formatting."""
+    normalized = str(name or '').strip().lower().replace(' ', '_')
+    table = str(table_name or '').strip().lower()
+    if normalized in {'amount', 'activity_amount'} and table in {
+        'petty_cash', 'time_logs', 'temp_activities', 'project_wbs'
+    }:
+        return False
+    if any(term in normalized for term in ('مبلغ', 'قیمت', 'هزینه', 'مزد', 'حقوق', 'برآورد', 'سهم_مدیر')):
+        return True
+    exact = {
+        'amount', 'total_amount', 'unit_price', 'price', 'base_salary',
+        'seniority_pay', 'daily_wage', 'transport_cost', 'estimate_amount',
+        'salary_amount', 'manager_share', 'paid_amount', 'expense_amount',
+        'total_cost', 'cost_amount', 'payment_amount', 'personal_amount',
+    }
+    return normalized in exact or normalized.endswith((
+        '_amount', '_price', '_salary', '_wage', '_cost', '_pay'
+    ))
+
+
+def excel_header_text(name):
+    """Translate database column names into readable Persian Excel headers."""
+    raw = str(name or '').strip()
+    if not raw or re.search(r'[\u0600-\u06FF]', raw):
+        return raw
+    labels = {
+        'id': 'شناسه', 'employee_id': 'شماره پرسنلی', 'project_id': 'شناسه پروژه',
+        'user_id': 'شناسه کاربر', 'username': 'نام کاربری', 'name': 'نام',
+        'employee_name': 'نام کارمند', 'role': 'نقش', 'permissions': 'دسترسی‌ها',
+        'action': 'عملیات', 'date': 'تاریخ', 'timestamp': 'زمان ثبت',
+        'created_at': 'زمان ایجاد', 'updated_at': 'زمان به‌روزرسانی',
+        'details': 'جزئیات', 'petty_cash_id': 'شناسه هزینه',
+        'condition': 'شرایط', 'activity_location': 'محل فعالیت',
+        'activity_description': 'شرح فعالیت', 'activity_amount': 'مقدار فعالیت',
+        'location': 'محل مصرف', 'description': 'شرح', 'notes': 'توضیحات',
+        'unit': 'واحد', 'amount': 'مقدار / مبلغ', 'unit_price': 'قیمت واحد',
+        'discount': 'تخفیف', 'total_amount': 'مبلغ کل', 'source': 'منبع تأمین',
+        'invoice_number': 'شماره فاکتور', 'settlement_status': 'وضعیت تسویه',
+        'payer': 'پرداخت‌کننده', 'foreman_name': 'سرکارگر', 'worker_count': 'تعداد نفرات',
+        'daily_wage': 'مزد روزانه', 'transport_cost': 'هزینه رفت‌وآمد',
+        'receipt_image_path': 'فایل تصویر رسید', 'personal_manager_payment': 'پرداخت شخصی مدیر',
+        'exclude_manager_calculation': 'عدم محاسبه سهم مدیر', 'category': 'دسته‌بندی',
+        'facility_name': 'نام تأسیسات', 'companion_name': 'نفر همراه',
+        'duration': 'مدت زمان', 'materials': 'مصالح', 'material_source': 'محل تأمین',
+        'wbs_code': 'کد WBS', 'wbs_coverage_percent': 'درصد پوشش WBS',
+        'total_quantity': 'مقدار کل', 'weight_percent': 'وزن فعالیت (%)',
+        'coverage_percent': 'درصد پیشرفت', 'weighted_progress': 'پیشرفت وزنی',
+        'sort_order': 'ترتیب', 'base_salary': 'حقوق پایه (ریال)',
+        'seniority_pay': 'پایه سنوات (ریال)', 'insurance_number': 'شماره بیمه',
+        'bank_account_number': 'شماره حساب بانکی', 'national_code': 'کد ملی',
+        'children_count': 'تعداد فرزند', 'marital_status': 'وضعیت تأهل',
+        'employer_name': 'نام کارفرما', 'start_date': 'تاریخ شروع بکار',
+        'contract_duration_months': 'مدت قرارداد (ماه)', 'estimate_amount': 'مبلغ برآورد (ریال)',
+        'receipt_path': 'فایل رسید', 'image_path': 'فایل تصویر', 'file_path': 'فایل پیوست',
+    }
+    if raw.lower() in labels:
+        return labels[raw.lower()]
+    word_labels = {
+        'id': 'شناسه', 'employee': 'کارمند', 'project': 'پروژه', 'user': 'کاربر',
+        'name': 'نام', 'date': 'تاریخ', 'time': 'زمان', 'created': 'ایجاد',
+        'updated': 'به‌روزرسانی', 'amount': 'مبلغ', 'total': 'کل', 'price': 'قیمت',
+        'cost': 'هزینه', 'salary': 'حقوق', 'wage': 'مزد', 'pay': 'پرداخت',
+        'description': 'شرح', 'activity': 'فعالیت', 'location': 'محل', 'notes': 'توضیحات',
+        'unit': 'واحد', 'quantity': 'مقدار', 'weight': 'وزن', 'percent': 'درصد',
+        'status': 'وضعیت', 'source': 'منبع', 'number': 'شماره', 'code': 'کد',
+        'count': 'تعداد', 'worker': 'کارگر', 'foreman': 'سرکارگر', 'transport': 'رفت‌وآمد',
+        'discount': 'تخفیف', 'invoice': 'فاکتور', 'payer': 'پرداخت‌کننده',
+        'receipt': 'رسید', 'image': 'تصویر', 'path': 'مسیر', 'action': 'عملیات',
+        'condition': 'شرایط', 'facility': 'تأسیسات', 'companion': 'همراه',
+        'material': 'مصالح', 'duration': 'مدت', 'coverage': 'پوشش',
+        'manager': 'مدیر', 'personal': 'شخصی', 'exclude': 'حذف از',
+        'calculation': 'محاسبه', 'settlement': 'تسویه', 'category': 'دسته‌بندی',
+        'employment': 'استخدام', 'bank': 'بانک', 'account': 'حساب', 'insurance': 'بیمه',
+        'national': 'ملی', 'children': 'فرزند', 'marital': 'تأهل', 'employer': 'کارفرما',
+        'contract': 'قرارداد', 'months': 'ماه', 'estimate': 'برآورد', 'order': 'ترتیب',
+        'timestamp': 'زمان ثبت', 'activity_amount': 'مقدار فعالیت',
+    }
+    words = [word_labels.get(token.lower(), token) for token in re.split(r'[_\s]+', raw)]
+    return ' '.join(words)
+
+
+def style_xlsxwriter_worksheet(workbook, worksheet, last_row, last_column, autofit=True):
+    """Set RTL direction, alternating row fill, and content-based column widths."""
+    worksheet.right_to_left()
+    if last_row >= 1 and last_column >= 0:
+        stripe_format = workbook.add_format({'bg_color': '#F2F4F7'})
+        worksheet.conditional_format(1, 0, last_row, last_column, {
+            'type': 'formula',
+            'criteria': '=MOD(ROW(),2)=0',
+            'format': stripe_format,
+        })
+    if autofit:
+        worksheet.autofit()
+
+
+def excel_numeric_value(value):
+    """Parse localized numeric text so Excel can apply its numeric format."""
+    if isinstance(value, Number) and not isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().translate(str.maketrans(
+        '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789'
+    )).replace(',', '').replace('٬', '').replace('٫', '.').replace(' ', '')
+    if not re.fullmatch(r'-?\d+(?:\.\d+)?', normalized):
+        return None
+    return float(normalized) if '.' in normalized else int(normalized)
+
+
+def excel_date_text(value):
+    """Return ISO Gregorian date text as Persian-digit Shamsi text."""
+    if not isinstance(value, str):
+        return value
+    value = value.strip()
+    iso_match = re.fullmatch(r'(\d{4})-(\d{2})-(\d{2})(.*)', value)
+    if iso_match:
+        try:
+            year = int(iso_match.group(1))
+            if year >= 1700:
+                gregorian = datetime.strptime('-'.join(iso_match.group(i) for i in (1, 2, 3)), '%Y-%m-%d').date()
+                date_part = jdatetime.date.fromgregorian(date=gregorian).strftime('%Y/%m/%d')
+            else:
+                date_part = f'{year:04d}/{int(iso_match.group(2)):02d}/{int(iso_match.group(3)):02d}'
+            date_part = date_part.translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
+            return date_part + iso_match.group(4)
+        except ValueError:
+            return value
+    slash_match = re.fullmatch(r'(\d{4})/(\d{1,2})/(\d{1,2})(.*)', value)
+    if slash_match:
+        return value.translate(str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹'))
+    return value
+
+
+def style_openpyxl_worksheet(worksheet):
+    """Apply the shared font, alignment, date, and money rules to an XLSX sheet."""
+    from copy import copy
+    from openpyxl.styles import Border, PatternFill
+
+    worksheet.sheet_view.rightToLeft = True
+    money_columns = set()
+    for column_index in range(1, worksheet.max_column + 1):
+        if is_excel_money_field(worksheet.cell(1, column_index).value):
+            money_columns.add(column_index)
+
+    stripe_fill = PatternFill(fill_type='solid', fgColor='F2F4F7')
+    no_fill = PatternFill(fill_type=None)
+    for row_index, row in enumerate(worksheet.iter_rows(), start=1):
+        for cell in row:
+            if isinstance(cell.value, str):
+                cell.value = excel_date_text(cell.value)
+            font = copy(cell.font)
+            font.name = 'B Nazanin'
+            font.bold = False
+            cell.font = font
+            alignment = copy(cell.alignment)
+            alignment.horizontal = 'center'
+            alignment.vertical = 'center'
+            alignment.wrap_text = True
+            cell.alignment = alignment
+            cell.border = Border()
+            if row_index > 1:
+                cell.fill = stripe_fill if row_index % 2 == 0 else no_fill
+            if cell.column in money_columns and isinstance(cell.value, Number) and not isinstance(cell.value, bool):
+                cell.number_format = '#,##0'
 
 def get_auth_db_connection():
     """Connect to the shared database containing accounts and project registry."""
@@ -138,6 +320,24 @@ def get_user_project_ids(username):
             (username,)
         ).fetchall()
         return [row['project_id'] for row in rows]
+    finally:
+        conn.close()
+
+
+def get_accessible_project_count(username, all_projects=False):
+    """Count active project grants for the shared navigation menu."""
+    conn = get_auth_db_connection()
+    try:
+        if all_projects:
+            row = conn.execute('SELECT COUNT(*) AS count FROM projects').fetchone()
+        else:
+            row = conn.execute('''
+                SELECT COUNT(DISTINCT p.id) AS count
+                FROM projects p
+                JOIN user_projects up ON up.project_id = p.id
+                WHERE up.username = ?
+            ''', (username,)).fetchone()
+        return row['count'] if row else 0
     finally:
         conn.close()
 

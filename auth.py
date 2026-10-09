@@ -6,6 +6,7 @@ import re
 import shutil
 import uuid
 import zipfile
+from urllib.parse import quote, unquote, urlsplit
 from itertools import chain
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
@@ -104,20 +105,7 @@ def _project_date_to_jalali(value):
 
 def _excel_jalali_date_text(value):
     """Convert ISO Gregorian date/date-time text to a Shamsi date for exports."""
-    if not isinstance(value, str):
-        return value
-    match = re.fullmatch(r'(\d{4})-(\d{2})-(\d{2})(.*)', value.strip())
-    if not match:
-        return value
-    try:
-        gregorian_date = datetime.strptime('-'.join(match.group(i) for i in (1, 2, 3)), '%Y-%m-%d').date()
-        jalali_date = jdatetime.date.fromgregorian(date=gregorian_date)
-        persian_date = jalali_date.strftime('%Y/%m/%d').translate(str.maketrans(
-            '0123456789', '۰۱۲۳۴۵۶۷۸۹'
-        ))
-        return persian_date + match.group(4)
-    except ValueError:
-        return value
+    return utils.excel_date_text(value)
 
 
 def _project_lock_response(project_id, endpoint):
@@ -147,7 +135,59 @@ def _project_export_paths(token):
     return export_dir, os.path.join(export_dir, 'project_data.xlsx'), os.path.join(export_dir, 'project_archive.zip')
 
 
-def _write_project_workbook(project, db_path, output_path):
+def _project_attachment_link_map(project_id):
+    """Map stored upload references to their relative locations in the ZIP."""
+    sources = [(utils.get_project_upload_folder(project_id), 'project_uploads',
+                f'/project_uploads/{int(project_id)}')]
+    if int(project_id) == 1:
+        sources.append((utils.UPLOAD_FOLDER, 'legacy_uploads', '/static/uploads'))
+
+    aliases = {}
+
+    def register(alias, entry):
+        alias = unquote(str(alias or '')).replace('\\', '/').strip()
+        if not alias:
+            return
+        if alias in aliases and aliases[alias] != entry:
+            aliases[alias] = None
+        else:
+            aliases[alias] = entry
+
+    for folder, archive_label, stored_prefix in sources:
+        if not os.path.isdir(folder):
+            continue
+        for root, _, filenames in os.walk(folder):
+            for filename in filenames:
+                full_path = os.path.join(root, filename)
+                relative_path = os.path.relpath(full_path, folder).replace(os.sep, '/')
+                # The workbook lives one directory below the ZIP project root.
+                archive_target = f'../attachments/{archive_label}/{relative_path}'
+                entry = (filename, archive_target)
+                for alias in (
+                    f'{stored_prefix}/{relative_path}',
+                    f'/{archive_label}/{relative_path}',
+                    f'{archive_label}/{relative_path}',
+                    relative_path,
+                    filename,
+                    full_path,
+                ):
+                    register(alias, entry)
+    return aliases
+
+
+def _project_attachment_for_cell(value, link_map):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = unquote(value.strip()).replace('\\', '/')
+    parsed_path = unquote(urlsplit(raw).path).replace('\\', '/')
+    for candidate in (parsed_path, parsed_path.lstrip('/'), raw, raw.lstrip('/'), os.path.basename(parsed_path)):
+        entry = link_map.get(candidate)
+        if entry:
+            return entry
+    return None
+
+
+def _write_project_workbook(project, db_path, output_path, attachment_link_map):
     import xlsxwriter
 
     conn = sqlite3.connect(db_path)
@@ -166,12 +206,19 @@ def _write_project_workbook(project, db_path, output_path):
             name = cleaned[:31 - len(ending)] + ending
             suffix += 1
         used_sheet_names.add(name)
-        return workbook.add_worksheet(name)
+        sheet = workbook.add_worksheet(name)
+        sheet.right_to_left()
+        return sheet
 
     try:
         conn.execute('PRAGMA busy_timeout = 30000')
         conn.execute('BEGIN IMMEDIATE')
         metadata_sheet = add_sheet('مشخصات پروژه')
+        label_format = utils.excel_add_format(workbook, {'border': 1, 'bg_color': '#DCE6F1'})
+        default_format = utils.excel_add_format(workbook, {'border': 1})
+        number_format = default_format
+        money_format = utils.excel_add_format(workbook, {'border': 1, 'num_format': '#,##0'})
+        hyperlink_format = utils.excel_add_format(workbook, {'font_color': '#0563C1', 'underline': 1})
         metadata = (
             ('نام پروژه', project['name']),
             ('نام کارفرما', project['employer_name']),
@@ -181,15 +228,21 @@ def _write_project_workbook(project, db_path, output_path):
             ('شناسه پروژه', project['id']),
         )
         for row_index, (label, value) in enumerate(metadata):
-            metadata_sheet.write_string(row_index, 0, label)
+            metadata_sheet.write_string(row_index, 0, label, label_format)
             if value is None:
-                metadata_sheet.write_blank(row_index, 1, None)
+                metadata_sheet.write_blank(row_index, 1, None, default_format)
             elif isinstance(value, (int, float)):
-                metadata_sheet.write_number(row_index, 1, value)
+                value_format = money_format if utils.is_excel_money_field(label) else number_format
+                metadata_sheet.write_number(row_index, 1, value, value_format)
+            elif utils.is_excel_money_field(label) and utils.excel_numeric_value(str(value)) is not None:
+                metadata_sheet.write_number(
+                    row_index, 1, utils.excel_numeric_value(str(value)), money_format
+                )
             else:
-                metadata_sheet.write_string(row_index, 1, str(_excel_jalali_date_text(str(value))))
+                metadata_sheet.write_string(row_index, 1, str(_excel_jalali_date_text(str(value))), default_format)
         metadata_sheet.set_column(0, 0, 26)
         metadata_sheet.set_column(1, 1, 40)
+        utils.style_xlsxwriter_worksheet(workbook, metadata_sheet, len(metadata) - 1, 1, autofit=False)
 
         table_names = [row['name'] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -204,27 +257,51 @@ def _write_project_workbook(project, db_path, output_path):
             if first_record is None:
                 continue
             sheet = add_sheet(table_name)
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#DCE6F1'})
+            header_format = utils.excel_add_format(workbook, {'bg_color': '#DCE6F1', 'border': 1, 'text_wrap': True})
+            money_columns = {
+                index for index, column in enumerate(columns)
+                if utils.is_excel_money_field(column, table_name)
+            }
             for col_index, column in enumerate(columns):
-                sheet.write_string(0, col_index, column, header_format)
+                header_text = utils.excel_header_text(column)
+                sheet.write_string(0, col_index, header_text, header_format)
+                column_width = min(34, max(14, len(header_text) * 1.25 + 2))
+                sheet.set_column(col_index, col_index, column_width)
             row_index = 1
             for record in chain((first_record,), cursor):
                 for col_index, value in enumerate(record):
                     value = _excel_jalali_date_text(value)
                     if value is None:
-                        sheet.write_blank(row_index, col_index, None)
+                        sheet.write_blank(row_index, col_index, None, default_format)
                     elif isinstance(value, str):
-                        sheet.write_string(row_index, col_index, value)
+                        attachment = _project_attachment_for_cell(value, attachment_link_map)
+                        if attachment:
+                            filename, relative_target = attachment
+                            target = quote(relative_target, safe='/')
+                            sheet.write_url(
+                                row_index, col_index, f'external:{target}',
+                                hyperlink_format, filename
+                            )
+                        else:
+                            numeric_value = utils.excel_numeric_value(value) if col_index in money_columns else None
+                            if numeric_value is None:
+                                sheet.write_string(row_index, col_index, value, default_format)
+                            else:
+                                sheet.write_number(row_index, col_index, numeric_value, money_format)
                     elif isinstance(value, (int, float)):
-                        sheet.write_number(row_index, col_index, value)
+                        value_format = money_format if col_index in money_columns else number_format
+                        sheet.write_number(row_index, col_index, value, value_format)
                     elif isinstance(value, bytes):
-                        sheet.write_string(row_index, col_index, f'[دادهٔ باینری: {len(value)} بایت]')
+                        sheet.write_string(row_index, col_index, f'[دادهٔ باینری: {len(value)} بایت]', default_format)
                     else:
-                        sheet.write_string(row_index, col_index, str(value))
+                        sheet.write_string(row_index, col_index, str(value), default_format)
                 row_index += 1
             sheet.freeze_panes(1, 0)
             sheet.autofilter(0, 0, max(0, row_index - 1), len(columns) - 1)
             sheet.set_row(0, 24)
+            utils.style_xlsxwriter_worksheet(
+                workbook, sheet, row_index - 1, len(columns) - 1, autofit=False
+            )
         workbook.close()
         workbook_closed = True
         conn.commit()
@@ -251,7 +328,8 @@ def _create_project_export(project, token=None):
     os.makedirs(export_dir, exist_ok=False)
     safe_name = re.sub(r'[^\w.-]+', '_', project['name'], flags=re.UNICODE).strip('_') or f'project_{project_id}'
     try:
-        _write_project_workbook(project, db_path, xlsx_path)
+        attachment_link_map = _project_attachment_link_map(project_id)
+        _write_project_workbook(project, db_path, xlsx_path, attachment_link_map)
         with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(xlsx_path, arcname=f'{safe_name}/project_data.xlsx')
             archive.writestr(f'{safe_name}/README.txt',
@@ -337,6 +415,18 @@ def _delete_project_data(project_id, token):
 
 
 def init_auth_system(app):
+    @app.context_processor
+    def inject_project_switch_visibility():
+        user = session.get('user')
+        projects = utils.list_projects() if user else []
+        if not user or len(projects) <= 1:
+            return {'show_project_switch': False}
+        if user.get('role') == 'admin':
+            return {'show_project_switch': True}
+        assigned_ids = set(utils.get_user_project_ids(user['username']))
+        available_count = sum(project['id'] in assigned_ids for project in projects)
+        return {'show_project_switch': available_count > 1}
+
     @app.before_request
     def enforce_active_project():
         endpoint = request.endpoint

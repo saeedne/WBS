@@ -89,7 +89,7 @@
                     پروژه: <span class="font-bold text-indigo-700">{{ session['active_project_name'] }}</span>
                 {% endif %}
             </span>
-            {% if session['user'].get('role') == 'admin' and session.get('active_project_id') %}
+            {% if show_project_switch %}
                 <a href="{{ url_for('select_project') }}" class="text-indigo-700 hover:underline">تغییر پروژه</a>
             {% endif %}
         </div>
