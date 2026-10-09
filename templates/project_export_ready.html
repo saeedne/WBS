@@ -1,0 +1,30 @@
+{% extends 'layout.html' %}
+
+{% block title %}خروجی پروژه و حذف{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto bg-white rounded-xl shadow-xl border border-gray-200 p-6">
+    <h1 class="text-2xl font-bold text-gray-800 mb-2">خروجی آماده است: {{ project.name }}</h1>
+    <p class="text-gray-700 mb-4">فایل اکسل شامل مشخصات و همهٔ جدول‌های اطلاعات پروژه است. فایل ZIP نیز اکسل و همهٔ فایل‌های پیوست‌شده، از جمله عکس‌ها و PDFها را در بر دارد.</p>
+
+    <div class="flex flex-wrap gap-3 mb-6">
+        <a href="{{ url_for('download_project_export', token=token, kind='excel') }}" class="bg-green-700 hover:bg-green-800 text-white font-semibold px-5 py-3 rounded-lg">دریافت فایل اکسل</a>
+        <a href="{{ url_for('download_project_export', token=token, kind='zip') }}" class="bg-indigo-700 hover:bg-indigo-800 text-white font-semibold px-5 py-3 rounded-lg">دریافت فایل ZIP</a>
+    </div>
+
+    <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+        <h2 class="font-bold text-red-800 mb-2">حذف دائمی پروژه</h2>
+        <p class="text-sm text-red-800 mb-3">پس از دریافت هر دو فایل، نام پروژه را دقیقاً وارد کنید. حذف، اطلاعات و فایل‌های این پروژه را از سرور پاک می‌کند و قابل بازگشت نیست.</p>
+        <form action="{{ url_for('delete_project_route', project_id=project.id) }}" method="post" class="space-y-3">
+            <input name="project_name_confirmation" required autocomplete="off" placeholder="برای تأیید، نام پروژه را وارد کنید" class="w-full p-3 border border-red-300 rounded-lg">
+            <button type="submit" class="bg-red-700 hover:bg-red-800 text-white font-bold px-5 py-3 rounded-lg">حذف دائمی پروژه</button>
+        </form>
+    </div>
+
+    <form action="{{ url_for('cancel_project_export_route', project_id=project.id) }}" method="post" class="mt-4">
+        <button type="submit" class="text-amber-800 hover:underline">لغو فرایند و نگه‌داشتن اطلاعات پروژه</button>
+    </form>
+
+    <a href="{{ url_for('users') }}" class="inline-block mt-5 text-indigo-700 hover:underline">بازگشت به مدیریت کاربران</a>
+</section>
+{% endblock %}

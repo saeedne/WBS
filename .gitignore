@@ -3,6 +3,7 @@ time_tracker.db-shm
 time_tracker.db-wal
 project_databases/
 project_uploads/
+project_exports/
 __pycache__/
 uploads/
 WBS.zip

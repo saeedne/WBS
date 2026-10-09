@@ -1,0 +1,15 @@
+{% extends 'layout.html' %}
+
+{% block title %}پروژه موقتاً قفل است{% endblock %}
+
+{% block content %}
+<section class="max-w-2xl mx-auto bg-white rounded-xl shadow-xl border border-amber-200 p-6 text-center">
+    <h1 class="text-2xl font-bold text-amber-800 mb-3">پروژه موقتاً در دسترس نیست</h1>
+    <p class="text-gray-700 mb-2">پروژهٔ «{{ project_name }}» در حال تهیهٔ خروجی و حذف است؛ تا پایان یا لغو این فرایند، اطلاعات آن تغییر نمی‌کند.</p>
+    <p class="text-sm text-gray-500 mb-5">اگر فرایند نیمه‌کاره رها شود، قفل پس از ۱۲ ساعت خودکار برداشته می‌شود.</p>
+    {% if is_admin %}
+    <a href="{{ url_for('users') }}" class="inline-block bg-indigo-700 hover:bg-indigo-800 text-white px-5 py-2 rounded-lg">مدیریت پروژه‌ها</a>
+    {% endif %}
+    <a href="{{ url_for('logout') }}" class="inline-block bg-gray-600 hover:bg-gray-700 text-white px-5 py-2 rounded-lg">خروج</a>
+</section>
+{% endblock %}

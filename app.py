@@ -72,4 +72,5 @@ payroll_routes.init_payroll_routes(app)
 project_wbs_routes.init_project_wbs_routes(app)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True)
+    # VS Code's debugger can conflict with Werkzeug's auto-reloader on Windows.
+    app.run(host='0.0.0.0', debug=True, use_reloader=False)

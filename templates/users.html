@@ -12,14 +12,76 @@
 
 {% block content %}
 <header class="text-center mb-6">
-    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">مدیریت کاربران</h1>
-    <p class="text-gray-500 text-sm">افزودن، ویرایش و حذف کاربران سیستم</p>
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">مدیریت کاربران و پروژه‌ها</h1>
+    <p class="text-gray-500 text-sm">افزودن، ویرایش و حذف کاربران و پروژه‌ها</p>
 </header>
 
 <section>
+    {% if can_create_project %}
+    <div class="bg-indigo-50 p-4 rounded-lg shadow-inner border border-indigo-100 mb-6">
+        <h2 class="text-xl font-bold text-gray-800 mb-3">ساخت پروژهٔ جدید</h2>
+        <form action="{{ url_for('create_project_route') }}" method="post" class="space-y-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <input name="name" required maxlength="100" placeholder="نام پروژه" class="w-full p-2 border rounded">
+                <input name="employer_name" maxlength="150" placeholder="نام کارفرما" class="w-full p-2 border rounded">
+                <label class="text-sm">تاریخ شروع بکار (شمسی)<input name="start_date" id="project_start_date" type="text" autocomplete="off" placeholder="۱۴۰۵/۰۱/۰۱" class="w-full p-2 border rounded"></label>
+                <label class="text-sm">مدت قرارداد (ماه)<input name="contract_duration_months" type="number" min="0" step="1" class="w-full p-2 border rounded"></label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
+                    <label class="text-sm">مبلغ برآورد(ريال)<input id="create_estimate_display" type="text" inputmode="decimal" autocomplete="off" class="estimate-display w-full p-2 border rounded"></label>
+                    <label class="text-sm">مبلغ به حروف (ريال)<input id="create_estimate_words" type="text" readonly class="estimate-words w-full p-2 border rounded bg-gray-100"></label>
+                    <input name="estimate_amount" id="create_estimate_raw" type="hidden">
+                </div>
+            </div>
+            <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg">ساخت پروژه</button>
+        </form>
+    </div>
+
+    <div class="bg-white rounded-xl overflow-hidden shadow-xl border border-gray-200 mb-6">
+        <h2 class="text-xl font-bold p-4">پروژه‌ها</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead class="bg-gray-50"><tr>
+                    <th class="px-4 py-3 text-right">نام پروژه</th><th class="px-4 py-3 text-right">کارفرما</th>
+                    <th class="px-4 py-3 text-right">شروع بکار</th><th class="px-4 py-3 text-right">مدت (ماه)</th>
+                    <th class="px-4 py-3 text-right">مبلغ برآورد</th><th class="px-4 py-3 text-right">وضعیت</th><th class="px-4 py-3 text-right">عملیات</th>
+                </tr></thead>
+                <tbody class="divide-y">
+                    {% for project in projects %}
+                    <tr>
+                        <td class="px-4 py-3">{{ project.name }}</td><td class="px-4 py-3">{{ project.employer_name or '—' }}</td>
+                        <td class="px-4 py-3">{{ project.start_date_jalali or '—' }}</td><td class="px-4 py-3">{{ project.contract_duration_months if project.contract_duration_months is not none else '—' }}</td>
+                        <td class="px-4 py-3">{{ project.estimate_amount if project.estimate_amount is not none else '—' }}</td>
+                        <td class="px-4 py-3">{{ 'در حال خروجی و حذف' if project.deletion_token else 'فعال' }}</td>
+                        <td class="px-4 py-3 flex flex-wrap gap-3">
+                            {% if project.deletion_token %}
+                            <form action="{{ url_for('cancel_project_export_route', project_id=project.id) }}" method="post" onsubmit="return confirm('فرایند حذف لغو شود و اطلاعات پروژه باقی بماند؟');">
+                                <button type="submit" class="text-amber-800 hover:underline">لغو فرایند</button>
+                            </form>
+                            {% else %}
+                            <button type="button" class="edit-project-button text-indigo-700 hover:underline"
+                                    data-id="{{ project.id }}" data-name="{{ project.name }}"
+                                    data-employer="{{ project.employer_name or '' }}" data-start="{{ project.start_date_jalali or '' }}"
+                                    data-duration="{{ project.contract_duration_months if project.contract_duration_months is not none else '' }}" data-estimate="{{ project.estimate_amount if project.estimate_amount is not none else '' }}">ویرایش</button>
+                            <form action="{{ url_for('begin_project_export', project_id=project.id) }}" method="post"
+                                  onsubmit="return confirm('ابتدا خروجی اکسل و ZIP این پروژه ساخته می‌شود. پس از دریافت هر دو فایل می‌توانید حذف قطعی را تأیید کنید. ادامه می‌دهید؟');">
+                                <button type="submit" class="text-red-700 hover:underline">خروجی و حذف پروژه</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="p-4 text-gray-500">هنوز پروژه‌ای ثبت نشده است.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if projects %}
     <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
         <h2 class="text-xl font-bold text-gray-800 mb-3">افزودن کاربر جدید</h2>
-        <p class="text-sm text-gray-600 mb-3">کاربر عادی به پروژهٔ فعلی اختصاص داده می‌شود؛ حساب مدیر در همهٔ پروژه‌ها قابل استفاده است.</p>
+        <p class="text-sm text-gray-600 mb-3">برای هر کاربر عادی یک یا چند پروژه را انتخاب کنید؛ حساب مدیر می‌تواند به همهٔ پروژه‌ها دسترسی داشته باشد.</p>
         <form action="/add_user" method="post" class="space-y-3">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <input type="text" name="username" placeholder="نام کاربری" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
@@ -85,7 +147,30 @@
             </table>
         </div>
     </div>
+    {% else %}
+    <div class="bg-amber-50 text-amber-800 p-4 rounded-lg">برای افزودن کاربران عادی، ابتدا یک پروژه بسازید.</div>
+    {% endif %}
 </section>
+
+{% if can_create_project %}
+<div id="editProjectModal" class="modal"><div class="modal-content">
+    <span class="close-button" onclick="closeModal('editProjectModal')">&times;</span>
+    <h2 class="text-xl font-bold mb-4">ویرایش مشخصات پروژه</h2>
+    <form action="{{ url_for('edit_project_route') }}" method="post" class="space-y-3">
+        <input type="hidden" name="project_id" id="edit_project_id">
+        <input name="name" id="edit_project_name" required maxlength="100" placeholder="نام پروژه" class="w-full p-2 border rounded">
+        <input name="employer_name" id="edit_project_employer" maxlength="150" placeholder="نام کارفرما" class="w-full p-2 border rounded">
+        <label class="block text-sm">تاریخ شروع بکار (شمسی)<input name="start_date" id="edit_project_start" type="text" autocomplete="off" placeholder="۱۴۰۵/۰۱/۰۱" class="w-full p-2 border rounded"></label>
+        <label class="block text-sm">مدت قرارداد (ماه)<input name="contract_duration_months" id="edit_project_duration" type="number" min="0" step="1" class="w-full p-2 border rounded"></label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="block text-sm">مبلغ برآورد<input id="edit_estimate_display" type="text" inputmode="decimal" autocomplete="off" class="estimate-display w-full p-2 border rounded"></label>
+            <label class="block text-sm">مبلغ به حروف<input id="edit_estimate_words" type="text" readonly class="estimate-words w-full p-2 border rounded bg-gray-100"></label>
+            <input name="estimate_amount" id="edit_estimate_raw" type="hidden">
+        </div>
+        <div class="flex justify-end gap-3"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('editProjectModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
+    </form>
+</div></div>
+{% endif %}
 
 <div id="editModal" class="modal"><div class="modal-content">
     <span class="close-button" onclick="closeModal('editModal')">&times;</span>
@@ -134,8 +219,95 @@
 
 {% block scripts_extra %}
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+    ['project_start_date', 'edit_project_start'].forEach(id => {
+        if (document.getElementById(id) && typeof kamaDatepicker === 'function') {
+            kamaDatepicker(id, {
+                forceSelected: true,
+                forceFarsiDigits: true,
+                markToday: true,
+                gotoToday: true,
+                closeAfterSelect: true
+            });
+        }
+    });
+    setupEstimateAmount('create_estimate_display', 'create_estimate_raw', 'create_estimate_words');
+    setupEstimateAmount('edit_estimate_display', 'edit_estimate_raw', 'edit_estimate_words');
+});
+function normalizeAmount(value) {
+    const digitMap = {'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9','٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
+    return (value || '').replace(/[۰-۹٠-٩]/g, digit => digitMap[digit]).replace(/[٬,\s]/g, '').replace(/[^0-9.]/g, '').replace(/\.(?=.*\.)/g, '');
+}
+function persianDigits(value) { return String(value).replace(/[0-9]/g, digit => '۰۱۲۳۴۵۶۷۸۹'[digit]); }
+function amountInWords(value) {
+    const ones = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
+    const teens = ['ده', 'یازده', 'دوازده', 'سیزده', 'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
+    const tens = ['', '', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
+    const hundreds = ['', 'یکصد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
+    const scales = ['', 'هزار', 'میلیون', 'میلیارد', 'تریلیون'];
+    function underThousand(number) {
+        const parts = [];
+        const h = Math.floor(number / 100), rest = number % 100;
+        if (h) parts.push(hundreds[h]);
+        if (rest >= 10 && rest < 20) parts.push(teens[rest - 10]);
+        else {
+            const t = Math.floor(rest / 10), o = rest % 10;
+            if (t) parts.push(tens[t]);
+            if (o) parts.push(ones[o]);
+        }
+        return parts.join(' و ');
+    }
+    function integerWords(raw) {
+        let number = raw.replace(/^0+/, '') || '0';
+        if (number === '0') return 'صفر';
+        const groups = [];
+        while (number.length) { groups.unshift(Number(number.slice(-3))); number = number.slice(0, -3); }
+        if (groups.length > scales.length) return 'عدد بسیار بزرگ';
+        return groups.map((group, index) => group ? [underThousand(group), scales[groups.length - index - 1]].filter(Boolean).join(' ') : '').filter(Boolean).join(' و ');
+    }
+    if (!value) return '';
+    const [integer, fraction] = value.split('.');
+    let result = integerWords(integer || '0');
+    if (fraction) result += ' ممیز ' + fraction.split('').map(digit => integerWords(digit)).join(' و ');
+    return result + ' ریال';
+}
+function setupEstimateAmount(displayId, rawId, wordsId) {
+    const display = document.getElementById(displayId), raw = document.getElementById(rawId), words = document.getElementById(wordsId);
+    if (!display || !raw || !words) return;
+    display.addEventListener('input', () => {
+        const cursor = display.selectionStart || 0;
+        const digitsBeforeCursor = normalizeAmount(display.value.slice(0, cursor)).length;
+        const clean = normalizeAmount(display.value);
+        const pieces = clean.split('.');
+        pieces[0] = (pieces[0] || '').replace(/\B(?=(\d{3})+(?!\d))/g, '٬');
+        const formatted = persianDigits(pieces.join('.'));
+        display.value = formatted;
+        let position = 0, count = 0;
+        while (position < formatted.length && count < digitsBeforeCursor) {
+            if (/[۰-۹]/.test(formatted[position])) count++;
+            position++;
+        }
+        display.setSelectionRange(position, position);
+        raw.value = clean;
+        words.value = amountInWords(clean);
+    });
+    display.dispatchEvent(new Event('input'));
+}
 function showModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+document.querySelectorAll('.edit-project-button').forEach(button => {
+    button.addEventListener('click', () => {
+        document.getElementById('edit_project_id').value = button.dataset.id;
+        document.getElementById('edit_project_name').value = button.dataset.name;
+        document.getElementById('edit_project_employer').value = button.dataset.employer;
+        document.getElementById('edit_project_start').value = button.dataset.start;
+        document.getElementById('edit_project_duration').value = button.dataset.duration;
+        const estimateDisplay = document.getElementById('edit_estimate_display');
+        estimateDisplay.value = button.dataset.estimate;
+        estimateDisplay.dispatchEvent(new Event('input'));
+        showModal('editProjectModal');
+    });
+});
 function showEditModal(username, name, role, projectIds) {
     document.getElementById('edit_username').value = username;
     document.getElementById('display_username').value = username;

@@ -1,6 +1,8 @@
 from flask import Flask, has_request_context, session
 import sqlite3
 import os
+import re
+import shutil
 from datetime import datetime
 import json
 from functools import wraps
@@ -11,6 +13,7 @@ DB_FILE = os.path.join(BASE_DIR, 'time_tracker.db')
 PROJECT_DB_DIR = os.path.join(BASE_DIR, 'project_databases')
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 PROJECT_UPLOAD_FOLDER = os.path.join(BASE_DIR, 'project_uploads')
+PROJECT_EXPORT_FOLDER = os.path.join(BASE_DIR, 'project_exports')
 
 def get_auth_db_connection():
     """Connect to the shared database containing accounts and project registry."""
@@ -43,9 +46,25 @@ def get_db_connection(project_id=None):
 def list_projects():
     conn = get_auth_db_connection()
     try:
-        return conn.execute('SELECT id, name FROM projects ORDER BY id').fetchall()
+        expired = [row['deletion_token'] for row in conn.execute(
+            '''SELECT deletion_token FROM projects
+               WHERE deletion_token IS NOT NULL AND
+               datetime(deletion_started_at) < datetime('now', '-12 hours')'''
+        ).fetchall()]
+        if expired:
+            conn.execute(
+                '''UPDATE projects SET deletion_token = NULL, deletion_started_at = NULL
+                   WHERE deletion_token IS NOT NULL AND
+                   datetime(deletion_started_at) < datetime('now', '-12 hours')'''
+            )
+            conn.commit()
+        projects = conn.execute('SELECT * FROM projects ORDER BY id').fetchall()
     finally:
         conn.close()
+    for token in expired:
+        if token and re.fullmatch(r'[0-9a-f]{32}', token):
+            shutil.rmtree(os.path.join(PROJECT_EXPORT_FOLDER, token), ignore_errors=True)
+    return projects
 
 
 def get_project_name(project_id):
@@ -55,6 +74,53 @@ def get_project_name(project_id):
     try:
         row = conn.execute('SELECT name FROM projects WHERE id = ?', (int(project_id),)).fetchone()
         return row['name'] if row else None
+    finally:
+        conn.close()
+
+
+def get_project_deletion_lock(project_id):
+    if not project_id:
+        return None
+    conn = get_auth_db_connection()
+    try:
+        return conn.execute(
+            'SELECT deletion_token, deletion_started_at FROM projects WHERE id = ?',
+            (int(project_id),)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def lock_project_for_export(project_id, token):
+    conn = get_auth_db_connection()
+    try:
+        existing = conn.execute(
+            'SELECT deletion_token FROM projects WHERE id = ?', (int(project_id),)
+        ).fetchone()
+        if not existing:
+            return None
+        old_token = existing['deletion_token']
+        cursor = conn.execute(
+            '''UPDATE projects SET deletion_token = ?, deletion_started_at = ?
+               WHERE id = ? AND (deletion_token IS NULL OR
+               datetime(deletion_started_at) < datetime('now', '-12 hours'))''',
+            (token, datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), int(project_id))
+        )
+        conn.commit()
+        return (old_token or '') if cursor.rowcount else False
+    finally:
+        conn.close()
+
+
+def unlock_project(project_id, token):
+    conn = get_auth_db_connection()
+    try:
+        conn.execute(
+            '''UPDATE projects SET deletion_token = NULL, deletion_started_at = NULL
+               WHERE id = ? AND deletion_token = ?''',
+            (int(project_id), token)
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -80,13 +146,33 @@ def init_project_registry():
     """Create the shared project registry and attach legacy users to طرقبه."""
     conn = get_auth_db_connection()
     try:
+        projects_table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'projects'"
+        ).fetchone() is not None
         conn.execute('''
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                employer_name TEXT,
+                start_date TEXT,
+                contract_duration_months INTEGER,
+                estimate_amount REAL,
+                deletion_token TEXT,
+                deletion_started_at TEXT
             )
         ''')
+        project_columns = {row['name'] for row in conn.execute('PRAGMA table_info(projects)')}
+        for column_name, column_type in (
+            ('employer_name', 'TEXT'),
+            ('start_date', 'TEXT'),
+            ('contract_duration_months', 'INTEGER'),
+            ('estimate_amount', 'REAL'),
+            ('deletion_token', 'TEXT'),
+            ('deletion_started_at', 'TEXT'),
+        ):
+            if column_name not in project_columns:
+                conn.execute(f'ALTER TABLE projects ADD COLUMN {column_name} {column_type}')
         conn.execute('''
             CREATE TABLE IF NOT EXISTS user_projects (
                 username TEXT NOT NULL,
@@ -112,10 +198,13 @@ def init_project_registry():
             conn.execute('''INSERT OR IGNORE INTO user_projects (username, project_id)
                              SELECT username, project_id FROM user_projects_legacy''')
             conn.execute('DROP TABLE user_projects_legacy')
-        conn.execute(
-            'INSERT OR IGNORE INTO projects (id, name, created_at) VALUES (1, ?, ?)',
-            ('طرقبه', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        )
+        # Seed the legacy project only on the first registry creation. This
+        # prevents an intentionally deleted last project from reappearing.
+        if not projects_table_exists:
+            conn.execute(
+                'INSERT OR IGNORE INTO projects (id, name, created_at) VALUES (1, ?, ?)',
+                ('طرقبه', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
         conn.execute('''
             INSERT OR IGNORE INTO user_projects (username, project_id)
             SELECT username, 1 FROM users WHERE role != 'admin'
@@ -129,7 +218,8 @@ def init_project_registry():
         conn.close()
 
 
-def create_project(name):
+def create_project(name, employer_name=None, start_date=None,
+                   contract_duration_months=None, estimate_amount=None):
     name = (name or '').strip()
     if not name:
         raise ValueError('نام پروژه را وارد کنید.')
@@ -140,15 +230,40 @@ def create_project(name):
             raise ValueError('پروژه‌ای با این نام از قبل وجود دارد.')
         project_id = conn.execute('SELECT COALESCE(MAX(id), 0) + 1 FROM projects').fetchone()[0]
         db_path = get_project_db_path(project_id)
-        if os.path.exists(db_path):
+        if project_id != 1 and os.path.exists(db_path):
             raise ValueError('پوشهٔ دادهٔ این پروژه از قبل وجود دارد؛ با پشتیبانی تماس بگیرید.')
         init_db(db_path=db_path, seed_users=False)
         conn.execute(
-            'INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)',
-            (project_id, name, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            '''INSERT INTO projects
+               (id, name, created_at, employer_name, start_date,
+                contract_duration_months, estimate_amount)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (project_id, name, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+             (employer_name or '').strip() or None, start_date or None,
+             contract_duration_months, estimate_amount)
         )
         conn.commit()
         return project_id
+    finally:
+        conn.close()
+
+
+def update_project(project_id, name, employer_name=None, start_date=None,
+                   contract_duration_months=None, estimate_amount=None):
+    name = (name or '').strip()
+    if not name:
+        raise ValueError('نام پروژه را وارد کنید.')
+    conn = get_auth_db_connection()
+    try:
+        cursor = conn.execute(
+            '''UPDATE projects SET name = ?, employer_name = ?, start_date = ?,
+               contract_duration_months = ?, estimate_amount = ? WHERE id = ?''',
+            (name, (employer_name or '').strip() or None, start_date or None,
+             contract_duration_months, estimate_amount, int(project_id))
+        )
+        if cursor.rowcount == 0:
+            raise ValueError('پروژه پیدا نشد.')
+        conn.commit()
     finally:
         conn.close()
 
