@@ -396,11 +396,20 @@
 <section class="bg-white rounded-xl overflow-hidden shadow-2xl border mb-6">
 
 
-    <div class="p-4">
+    <div class="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 
         <h2 class="text-lg font-bold">
             جدول جزئیات پیشرفت
         </h2>
+
+        {% if session.get('user', {}).get('role') == 'admin' %}
+            <a
+                href="{{ url_for('download_project_progress_excel') }}"
+                class="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg"
+            >
+                خروجی اکسل
+            </a>
+        {% endif %}
 
     </div>
 

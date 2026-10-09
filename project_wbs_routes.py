@@ -1698,6 +1698,64 @@ def _create_current_wbs_export(conn):
     return output
 
 
+def _create_project_progress_export(conn):
+    """ساخت فایل Excel از آیتم‌های WBS و درصد پیشرفت فعلی آن‌ها."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    data = _progress_data(conn)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'جزئیات پیشرفت'
+    ws.sheet_view.rightToLeft = True
+
+    ws.append([
+        'کد WBS', 'شرح فعالیت', 'واحد', 'مقدار کل',
+        'وزن فعالیت (%)', 'پیشرفت آیتم (%)', 'پیشرفت وزنی (%)', 'توضیحات'
+    ])
+
+    for item in data['items']:
+        ws.append([
+            item['wbs_code'] or '',
+            item['activity'] or '',
+            item['unit'],
+            item['total_quantity'],
+            item['weight_percent'],
+            item['coverage_percent'],
+            item['weighted_progress'],
+            item['notes']
+        ])
+
+    header_fill = PatternFill(fill_type='solid', fgColor='1F4E78')
+    header_font = Font(bold=True, color='FFFFFF')
+    thin = Side(style='thin', color='D9E1F2')
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    widths = {'A': 16, 'B': 42, 'C': 16, 'D': 16, 'E': 20, 'F': 22, 'G': 22, 'H': 32}
+    for column, width in widths.items():
+        ws.column_dimensions[column].width = width
+
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='right', vertical='center')
+    for row in ws.iter_rows(min_row=2, min_col=5, max_col=7):
+        for cell in row:
+            cell.number_format = '0.00'
+
+    ws.freeze_panes = 'A2'
+    ws.auto_filter.ref = ws.dimensions
+    ws.row_dimensions[1].height = 25
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
 # =========================================================
 # ROUTES
 # =========================================================
@@ -1817,6 +1875,33 @@ def init_project_wbs_routes(app):
             output,
             as_attachment=True,
             download_name='WBS_فعلی_پروژه.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    # -----------------------------------------------------
+    # خروجی Excel از جزئیات پیشرفت WBS فعلی
+    # -----------------------------------------------------
+
+    @app.route('/download_project_progress_excel')
+    @auth.login_required
+    def download_project_progress_excel():
+
+        if (
+            not auth.has_permission('project_progress')
+            and not auth.has_permission('project_wbs')
+        ):
+            return redirect(url_for('admin_dashboard'))
+
+        conn = utils.get_db_connection()
+        try:
+            output = _create_project_progress_export(conn)
+        finally:
+            conn.close()
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name='گزارش_پیشرفت_WBS.xlsx',
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
 
