@@ -135,6 +135,9 @@
                         {% for status in settlement_statuses %}
                         <option value="{{ status }}" {% if selected_status == status %}selected{% endif %}>{{ status }}</option>
                         {% endfor %}
+                        {% if 'مانده دارد' not in settlement_statuses %}
+                        <option value="مانده دارد" {% if selected_status == 'مانده دارد' %}selected{% endif %}>مانده دارد</option>
+                        {% endif %}
                     </select>
                 </div>
                 <div class="flex items-center h-full pt-6">
@@ -173,6 +176,8 @@
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">شرح</th>
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">کد WBS</th>
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">مبلغ کل (ریال)</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">مبلغ پرداختی (ریال)</th>
+                        <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">مبلغ مانده (ریال)</th>
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">پرداخت کننده</th>
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">وضعیت تسویه</th>
                         <th class="px-6 py-3 text-right text-sm font-medium text-gray-500 uppercase tracking-wider">عملیات</th>
@@ -189,6 +194,8 @@
                         data-unit-price="{{ record.unit_price }}"
                         data-discount="{{ record.discount }}"
                         data-total-amount="{{ record.total_amount }}"
+                        data-paid-amount="{{ record.paid_amount }}"
+                        data-remaining-amount="{{ record.remaining_amount }}"
                         data-location="{{ record.location }}"
                         data-notes="{{ record.notes }}"
                         data-source="{{ record.source }}"
@@ -235,6 +242,8 @@
                             </div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 total-amount-cell">{{ "{:,.0f}".format(record.total_amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700 paid-amount-cell">{{ "{:,.0f}".format(record.paid_amount) }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold remaining-amount-cell {% if record.remaining_amount > 0 %}text-red-600{% else %}text-gray-500{% endif %}">{{ "{:,.0f}".format(record.remaining_amount) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.payer }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold {% if record.settlement_status == 'تسویه شده' %}text-green-600{% else %}text-red-600{% endif %}">{{ record.settlement_status }}</td>
                         {% if session.get('user', {}).get('role') == 'admin' %}
@@ -340,6 +349,11 @@
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                 </div>
                 <div>
+                    <label for="edit_paid_amount" class="block text-sm font-medium text-gray-700">مبلغ پرداختی (ریال):</label>
+                    <input type="number" id="edit_paid_amount" name="paid_amount" min="0" step="1" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                </div>
+                <div>
                     <label for="edit_discount" class="block text-sm font-medium text-gray-700">تخفیف:</label>
                     <input type="text" id="edit_discount" name="discount" value="0"
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
@@ -349,6 +363,11 @@
                     <input type="text" id="edit_total_amount" name="total_amount" required
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-gray-100"
                            readonly>
+                </div>
+                <div>
+                    <label for="edit_remaining_amount" class="block text-sm font-medium text-gray-700">مبلغ مانده (ریال):</label>
+                    <input type="number" id="edit_remaining_amount" name="remaining_amount" min="0" step="1" required
+                           class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                 </div>
                 <div>
                     <label for="edit_location" class="block text-sm font-medium text-gray-700">محل استفاده:</label>
@@ -376,6 +395,7 @@
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                         <option value="تسویه شده">تسویه شده</option>
                         <option value="تسویه نشده">تسویه نشده</option>
+                        <option value="مانده دارد" disabled>مانده دارد</option>
                     </select>
                 </div>
                 <div>
@@ -564,15 +584,42 @@
         return Number.isFinite(number) ? number : 0;
     }
 
+    let editPaidAmountFollowsTotal = false;
+
     // تابع محاسبه و بروزرسانی مبلغ کل
     function calculateEditTotalAmount() {
         const amount = removeNumberFormatting(document.getElementById('edit_amount').value);
         const unitPrice = removeNumberFormatting(document.getElementById('edit_unit_price').value);
-        const discount = parseFloat(removeNumberFormatting(document.getElementById('edit_discount').value)) || 0;
-        
-        let totalAmount = (amount * unitPrice) - discount;
-        
+        const discountText = document.getElementById('edit_discount').value.trim();
+        const grossAmount = amount * unitPrice;
+        const discount = discountText.includes('%')
+            ? grossAmount * (removeNumberFormatting(discountText.replace('%', '')) / 100)
+            : removeNumberFormatting(discountText);
+        const totalAmount = Math.max(0, grossAmount - discount);
         document.getElementById('edit_total_amount').value = formatNumber(totalAmount);
+        updateEditRemainingAmount();
+    }
+
+    function syncEditSettlementStatus() {
+        const remainingInput = document.getElementById('edit_remaining_amount');
+        const statusSelect = document.getElementById('edit_settlement_status');
+        const hasBalance = (Number(remainingInput.value) || 0) > 0;
+        [...statusSelect.options].forEach(option => {
+            if (option.value === 'مانده دارد') option.disabled = !hasBalance;
+            else option.disabled = hasBalance;
+        });
+        if (hasBalance) statusSelect.value = 'مانده دارد';
+        else if (statusSelect.value === 'مانده دارد') statusSelect.value = 'تسویه شده';
+    }
+
+    function updateEditRemainingAmount() {
+        const total = removeNumberFormatting(document.getElementById('edit_total_amount').value);
+        if (editPaidAmountFollowsTotal) {
+            document.getElementById('edit_paid_amount').value = Math.round(total);
+        }
+        const paid = removeNumberFormatting(document.getElementById('edit_paid_amount').value);
+        document.getElementById('edit_remaining_amount').value = Math.max(0, Math.round(total - paid));
+        syncEditSettlementStatus();
     }
 
     let editWbsLinks = [];
@@ -769,11 +816,15 @@
         document.getElementById('edit_unit_price').value = formatNumber(removeNumberFormatting(recordData.unitPrice)) || '';
         document.getElementById('edit_discount').value = recordData.discount || '0';
         document.getElementById('edit_total_amount').value = formatNumber(removeNumberFormatting(recordData.totalAmount));
+        document.getElementById('edit_paid_amount').value = recordData.paidAmount || '0';
+        editPaidAmountFollowsTotal = Number(removeNumberFormatting(recordData.paidAmount)) === Number(removeNumberFormatting(recordData.totalAmount));
+        document.getElementById('edit_remaining_amount').value = recordData.remainingAmount || '0';
         document.getElementById('edit_location').value = recordData.location;
         document.getElementById('edit_notes').value = recordData.notes;
         document.getElementById('edit_source').value = recordData.source;
         document.getElementById('edit_invoice_number').value = recordData.invoiceNumber;
         document.getElementById('edit_settlement_status').value = recordData.settlementStatus;
+        syncEditSettlementStatus();
         document.getElementById('edit_payer').value = recordData.payer;
         try {
             editWbsLinks = JSON.parse(recordData.wbsLinks || '[]');
@@ -811,9 +862,14 @@
         });
         
         // Attach event listeners for auto-calculation
-        document.getElementById('edit_amount').addEventListener('input', calculateEditTotalAmount);
-        document.getElementById('edit_unit_price').addEventListener('input', calculateEditTotalAmount);
-        document.getElementById('edit_discount').addEventListener('input', calculateEditTotalAmount);
+        document.getElementById('edit_amount').oninput = calculateEditTotalAmount;
+        document.getElementById('edit_unit_price').oninput = calculateEditTotalAmount;
+        document.getElementById('edit_discount').oninput = calculateEditTotalAmount;
+        document.getElementById('edit_paid_amount').oninput = function() {
+            editPaidAmountFollowsTotal = false;
+            updateEditRemainingAmount();
+        };
+        document.getElementById('edit_remaining_amount').oninput = syncEditSettlementStatus;
 
         // Add event listeners for editable total amount
         const totalAmountInput = document.getElementById('edit_total_amount');
@@ -828,6 +884,7 @@
             const unformattedValue = removeNumberFormatting(totalAmountInput.value);
             const formattedValue = formatNumber(unformattedValue);
             totalAmountInput.value = formattedValue;
+            updateEditRemainingAmount();
         });
         
     }
@@ -918,3 +975,4 @@
     });
 </script>
 {% endblock %}
+
