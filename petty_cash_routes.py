@@ -9,6 +9,7 @@ import uuid
 import os
 import sqlite3
 import xlsxwriter
+from urllib.parse import unquote, urlsplit
 
 def _to_number(value):
     """Convert numeric values from forms/SQLite safely, including Persian digits and separators."""
@@ -43,10 +44,34 @@ def _to_bool(value):
     return str(value).lower() in ('1', 'true', 'on', 'yes')
 
 
+def _read_petty_cash_payment_fields(form, total_amount):
+    """Read payment/balance values and keep the settlement status consistent."""
+    # Older clients may omit this field; preserve the new-form default of fully paid.
+    paid_raw = form.get('paid_amount')
+    paid_amount = max(
+        0,
+        _to_int_number(total_amount if paid_raw in (None, '') else paid_raw)
+    )
+    remaining_raw = form.get('remaining_amount')
+    remaining_amount = (
+        max(0, _to_int_number(remaining_raw))
+        if remaining_raw not in (None, '')
+        else max(0, _to_int_number(total_amount) - paid_amount)
+    )
+    settlement_status = form.get('settlement_status', 'تسویه نشده')
+    if remaining_amount > 0:
+        settlement_status = 'مانده دارد'
+    elif settlement_status == 'مانده دارد':
+        settlement_status = 'تسویه شده'
+    elif settlement_status not in ('تسویه شده', 'تسویه نشده'):
+        settlement_status = 'تسویه نشده'
+    return paid_amount, remaining_amount, settlement_status
+
+
 def _manager_share(record):
     """Calculate manager share according to petty-cash business rules."""
     amount = _to_number(record['total_amount'])
-    if record['settlement_status'] != 'تسویه شده':
+    if record['settlement_status'] not in ('تسویه شده', 'مانده دارد'):
         return 0.0
 
     personal = _to_bool(record['personal_manager_payment'])
@@ -65,8 +90,44 @@ def _paid_manager_share(record):
     return _to_number(record['total_amount']) if description.startswith('$$') and excluded else 0.0
 
 
+def _receipt_file_for_cleanup(receipt_url, project_id):
+    """Resolve only locally stored receipt uploads; never delete arbitrary paths."""
+    if not receipt_url:
+        return None
+
+    parsed = urlsplit(str(receipt_url))
+    if parsed.scheme or parsed.netloc:
+        return None
+    path = unquote(parsed.path).replace('\\', '/')
+    if '..' in path.split('/'):
+        return None
+
+    project_id = int(project_id)
+    parts = [part for part in path.split('/') if part]
+    if (len(parts) == 3 and parts[0] == 'project_uploads'
+            and parts[1] == str(project_id)):
+        root = os.path.join(utils.PROJECT_UPLOAD_FOLDER, str(project_id))
+        filename = parts[2]
+    elif (project_id == 1 and len(parts) == 3
+          and parts[:2] == ['static', 'uploads']):
+        root = utils.UPLOAD_FOLDER
+        filename = parts[2]
+    else:
+        return None
+
+    root_path = os.path.realpath(root)
+    file_path = os.path.realpath(os.path.join(root_path, filename))
+    try:
+        if os.path.commonpath([root_path, file_path]) != root_path:
+            return None
+    except ValueError:
+        return None
+    return file_path
+
+
 def _report_totals(records):
     total_amount = 0.0
+    remaining_amount = 0.0
     personal_amount = 0.0
     excluded_amount = 0.0
     manager_share = 0.0
@@ -74,6 +135,7 @@ def _report_totals(records):
     for record in records:
         amount = _to_number(record['total_amount'])
         total_amount += amount
+        remaining_amount += _to_number(record['remaining_amount'])
         if _to_bool(record['personal_manager_payment']):
             personal_amount += amount
         if _to_bool(record['exclude_manager_calculation']):
@@ -82,6 +144,7 @@ def _report_totals(records):
 
     return {
         'total_amount': total_amount,
+        'remaining_amount': remaining_amount,
         'personal_amount': personal_amount,
         'excluded_amount': excluded_amount,
         'manager_share': manager_share,
@@ -188,11 +251,13 @@ def init_petty_cash_routes(app):
             # Discount may be a percentage (e.g. 10%) or a fixed amount, so keep it as text.
             discount = request.form.get('discount', '').replace(',', '').strip()
             total_amount = _to_int_number(request.form.get('total_amount'))
+            paid_amount, remaining_amount, settlement_status = _read_petty_cash_payment_fields(
+                request.form, total_amount
+            )
             location = request.form['location']
             notes = request.form['notes']
             source = request.form['source']
             invoice_number = request.form['invoice_number']
-            settlement_status = request.form['settlement_status']
             payer = request.form['payer']
             personal_manager_payment = 1 if request.form.get('personal_manager_payment') == '1' else 0
             exclude_manager_calculation = 1 if request.form.get('exclude_manager_calculation') == '1' else 0
@@ -219,9 +284,9 @@ def init_petty_cash_routes(app):
             timestamp = miladi_dt.strftime('%Y-%m-%d %H:%M:%S')
 
             conn.execute('''
-                INSERT INTO petty_cash (date, description, unit, amount, unit_price, discount, total_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_code, wbs_coverage_percent, personal_manager_payment, exclude_manager_calculation, receipt_image_path, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (date_fa, description, unit, amount, unit_price, discount, total_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_links[0][0] if wbs_links else None, wbs_links[0][1] if wbs_links else 0, personal_manager_payment, exclude_manager_calculation, image_path, timestamp))
+                INSERT INTO petty_cash (date, description, unit, amount, unit_price, discount, total_amount, paid_amount, remaining_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_code, wbs_coverage_percent, personal_manager_payment, exclude_manager_calculation, receipt_image_path, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (date_fa, description, unit, amount, unit_price, discount, total_amount, paid_amount, remaining_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_links[0][0] if wbs_links else None, wbs_links[0][1] if wbs_links else 0, personal_manager_payment, exclude_manager_calculation, image_path, timestamp))
             petty_cash_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
             _save_petty_cash_wbs_links(conn, petty_cash_id, wbs_links)
             conn.commit()
@@ -263,6 +328,7 @@ def init_petty_cash_routes(app):
         start_date_fa = request.args.get('start_date')
         end_date_fa = request.args.get('end_date')
         payer_filter = request.args.get('payer_filter')
+        source_filter = request.args.get('source_filter')
         settlement_status_filter = request.args.get('settlement_status_filter')
         personal_manager_payment_filter = request.args.get('personal_manager_payment_filter')
         exclude_manager_calculation_filter = request.args.get('exclude_manager_calculation_filter')
@@ -293,9 +359,16 @@ def init_petty_cash_routes(app):
             conditions.append('payer = ?')
             params.append(payer_filter)
 
+        if source_filter and source_filter != 'all':
+            conditions.append('source = ?')
+            params.append(source_filter)
+
         if settlement_status_filter and settlement_status_filter != 'all':
-            conditions.append('settlement_status = ?')
-            params.append(settlement_status_filter)
+            if settlement_status_filter == 'مانده دارد':
+                conditions.append('remaining_amount > 0')
+            else:
+                conditions.append('settlement_status = ?')
+                params.append(settlement_status_filter)
 
         # Checkbox behavior: checked = filter active records; unchecked = all records.
         if personal_manager_payment_filter == 'yes':
@@ -316,6 +389,7 @@ def init_petty_cash_routes(app):
             show_manager_summary = session.get('user', {}).get('role') == 'admin'
             all_records = conn.execute('SELECT * FROM petty_cash').fetchall() if show_manager_summary else []
             payers = conn.execute("SELECT DISTINCT payer FROM petty_cash").fetchall()
+            sources = conn.execute("SELECT DISTINCT source FROM petty_cash WHERE source IS NOT NULL AND TRIM(source) != '' ORDER BY source").fetchall()
             settlement_statuses = conn.execute("SELECT DISTINCT settlement_status FROM petty_cash").fetchall()
             wbs_options = conn.execute("SELECT wbs_code, activity, unit, weight_percent FROM project_wbs ORDER BY sort_order, id").fetchall()
             record_wbs_links = conn.execute('''
@@ -349,6 +423,8 @@ def init_petty_cash_routes(app):
             display_record['amount'] = _to_number(display_record.get('amount'))
             display_record['unit_price'] = _to_number(display_record.get('unit_price'))
             display_record['total_amount'] = _to_int_number(display_record.get('total_amount'))
+            display_record['paid_amount'] = _to_int_number(display_record.get('paid_amount'))
+            display_record['remaining_amount'] = _to_int_number(display_record.get('remaining_amount'))
             display_record['wbs_links'] = links_by_record.get(record['id']) or (
                 [{'wbs_code': record['wbs_code'],
                   'wbs_coverage_percent': _to_number(record['wbs_coverage_percent']),
@@ -373,11 +449,13 @@ def init_petty_cash_routes(app):
         return render_template('petty_cash_reports.html', 
                                records=display_records,
                                payers=[p['payer'] for p in payers],
+                               sources=[s['source'] for s in sources],
                                settlement_statuses=[s['settlement_status'] for s in settlement_statuses],
                                wbs_options=[dict(row) for row in wbs_options],
                                start_date=start_date_fa,
                                end_date=end_date_fa,
                                selected_payer=payer_filter,
+                               selected_source=source_filter,
                                selected_status=settlement_status_filter,
                                selected_personal_manager_payment=personal_manager_payment_filter,
                                selected_exclude_manager_calculation=exclude_manager_calculation_filter,
@@ -393,6 +471,7 @@ def init_petty_cash_routes(app):
         start_date_fa = request.args.get('start_date')
         end_date_fa = request.args.get('end_date')
         payer_filter = request.args.get('payer_filter')
+        source_filter = request.args.get('source_filter')
         settlement_status_filter = request.args.get('settlement_status_filter')
         personal_manager_payment_filter = request.args.get('personal_manager_payment_filter')
         exclude_manager_calculation_filter = request.args.get('exclude_manager_calculation_filter')
@@ -423,10 +502,17 @@ def init_petty_cash_routes(app):
         if payer_filter and payer_filter != 'all':
             conditions.append('payer = ?')
             params.append(payer_filter)
+
+        if source_filter and source_filter != 'all':
+            conditions.append('source = ?')
+            params.append(source_filter)
             
         if settlement_status_filter and settlement_status_filter != 'all':
-            conditions.append('settlement_status = ?')
-            params.append(settlement_status_filter)
+            if settlement_status_filter == 'مانده دارد':
+                conditions.append('remaining_amount > 0')
+            else:
+                conditions.append('settlement_status = ?')
+                params.append(settlement_status_filter)
 
         # Checkbox behavior: checked = filter active records; unchecked = all records.
         if personal_manager_payment_filter == 'yes':
@@ -437,10 +523,6 @@ def init_petty_cash_routes(app):
             conditions.append('exclude_manager_calculation = ?')
             params.append(1)
         
-        if description_search:
-            conditions.append('description LIKE ?')
-            params.append(f'%{description_search}%')
-            
         if conditions:
             query += ' WHERE ' + ' AND '.join(conditions)
         
@@ -451,10 +533,22 @@ def init_petty_cash_routes(app):
             records = conn.execute(query, params).fetchall()
         finally:
             conn.close()
+
+        # The page's live search runs against the description cell, including
+        # its manager markers, so apply the same search before creating Excel.
+        if description_search:
+            search_text = description_search.lower()
+            records = [record for record in records if search_text in (
+                str(record['description'] or '')
+                + (' (پ.م)' if _to_bool(record['personal_manager_payment']) else '')
+                + (' (ع.پ)' if _to_bool(record['exclude_manager_calculation']) else '')
+                + (' (س.م)' if _to_bool(record['exclude_manager_calculation']) and str(record['description'] or '').lstrip().startswith('$$') else '')
+            ).lower()]
             
         output = io.BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
         worksheet = workbook.add_worksheet('گزارش هزینه')
+        show_manager_summary = session.get('user', {}).get('role') == 'admin'
         
         # Set worksheet direction to right-to-left
         worksheet.right_to_left()
@@ -467,7 +561,7 @@ def init_petty_cash_routes(app):
         total_label_format = utils.excel_add_format(workbook, {'border': 1})
         
         # Headers
-        headers = ['ردیف','تاریخ', 'شرح', 'واحد', 'مقدار', 'فی', 'تخفیف', 'مبلغ کل', 'محل استفاده', 'توضیحات', 'محل تامین', 'شماره فاکتور', 'وضعیت تسویه', 'پرداخت کننده']
+        headers = ['ردیف','تاریخ', 'شرح', 'واحد', 'مقدار', 'فی', 'تخفیف', 'مبلغ کل', 'پرداختی', 'مبلغ مانده', 'محل استفاده', 'توضیحات', 'محل تامین', 'شماره فاکتور', 'وضعیت تسویه', 'پرداخت کننده']
         for col_num, header in enumerate(headers):
             worksheet.write(0, col_num, header, header_format)
             
@@ -483,6 +577,8 @@ def init_petty_cash_routes(app):
                 markers.append('پ.م')
             if _to_bool(record['exclude_manager_calculation']):
                 markers.append('ع.پ')
+                if str(record['description'] or '').lstrip().startswith('$$'):
+                    markers.append('س.م')
             if markers:
                 description = f"{description} ({'، '.join(markers)})"
             
@@ -503,27 +599,34 @@ def init_petty_cash_routes(app):
                 except (ValueError, TypeError):
                     worksheet.write(row_num, 6, discount_text, default_format)
             worksheet.write(row_num, 7, amount, number_format)
-            worksheet.write(row_num, 8, record['location'], default_format)
-            worksheet.write(row_num, 9, record['notes'], default_format)
-            worksheet.write(row_num, 10, record['source'], default_format)
-            worksheet.write(row_num, 11, record['invoice_number'], default_format)
-            worksheet.write(row_num, 12, record['settlement_status'], default_format)
-            worksheet.write(row_num, 13, record['payer'], default_format)
+            worksheet.write(row_num, 8, _to_int_number(record['paid_amount']), number_format)
+            worksheet.write(row_num, 9, _to_int_number(record['remaining_amount']), number_format)
+            worksheet.write(row_num, 10, record['location'], default_format)
+            worksheet.write(row_num, 11, record['notes'], default_format)
+            worksheet.write(row_num, 12, record['source'], default_format)
+            worksheet.write(row_num, 13, record['invoice_number'], default_format)
+            worksheet.write(row_num, 14, record['settlement_status'], default_format)
+            worksheet.write(row_num, 15, record['payer'], default_format)
             row_num += 1
 
         # Add report summary rows at the end
         summary_rows = [
             ('جمع کل در بازه زمانی انتخابی', report_totals['total_amount']),
+            ('جمع کل مبلغ مانده در بازه زمانی انتخابی', report_totals['remaining_amount']),
             ('جمع کل پرداختی شخصی مدیر در بازه زمانی انتخابی', report_totals['personal_amount']),
             ('جمع کل غیر قابل محاسبه در بازه زمانی انتخابی', report_totals['excluded_amount']),
-            ('جمع کل سهم مدیر در بازه زمانی انتخابی', report_totals['manager_share']),
         ]
+        if show_manager_summary:
+            summary_rows.append(('جمع کل سهم مدیر در بازه زمانی انتخابی', report_totals['manager_share']))
         for label, value in summary_rows:
             worksheet.merge_range(row_num, 0, row_num, 6, label, total_label_format)
             worksheet.write(row_num, 7, value, total_format)
             row_num += 1
         
-        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1)
+        utils.style_xlsxwriter_worksheet(workbook, worksheet, row_num - 1, len(headers) - 1, autofit=False)
+        column_widths = [7, 13, 38, 12, 13, 17, 13, 19, 19, 19, 24, 32, 22, 18, 18, 20]
+        for col_num, width in enumerate(column_widths):
+            worksheet.set_column(col_num, col_num, width)
         
         workbook.close()
         output.seek(0)
@@ -549,11 +652,13 @@ def init_petty_cash_routes(app):
         # Discount may be a percentage (e.g. 10%) or a fixed amount, so keep it as text.
         discount = request.form.get('discount', '').replace(',', '').strip()
         total_amount = _to_int_number(request.form.get('total_amount'))
+        paid_amount, remaining_amount, settlement_status = _read_petty_cash_payment_fields(
+            request.form, total_amount
+        )
         location = request.form['location']
         notes = request.form['notes']
         source = request.form['source']
         invoice_number = request.form['invoice_number']
-        settlement_status = request.form['settlement_status']
         payer = request.form['payer']
         try:
             wbs_links = _parse_wbs_links(request.form)
@@ -580,9 +685,9 @@ def init_petty_cash_routes(app):
                     raise ValueError('یکی از بخش‌های انتخاب‌شده در ساختار شکست وجود ندارد.')
             conn.execute('''
                 UPDATE petty_cash
-                SET date = ?, description = ?, unit = ?, amount = ?, unit_price = ?, discount = ?, total_amount = ?, location = ?, notes = ?, source = ?, invoice_number = ?, settlement_status = ?, payer = ?, wbs_code = ?, wbs_coverage_percent = ?, personal_manager_payment = ?, exclude_manager_calculation = ?, timestamp = ?
+                SET date = ?, description = ?, unit = ?, amount = ?, unit_price = ?, discount = ?, total_amount = ?, paid_amount = ?, remaining_amount = ?, location = ?, notes = ?, source = ?, invoice_number = ?, settlement_status = ?, payer = ?, wbs_code = ?, wbs_coverage_percent = ?, personal_manager_payment = ?, exclude_manager_calculation = ?, timestamp = ?
                 WHERE id = ?
-            ''', (date_fa, description, unit, amount, unit_price, discount, total_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_code, wbs_coverage_percent, personal_manager_payment, exclude_manager_calculation, timestamp, record_id))
+            ''', (date_fa, description, unit, amount, unit_price, discount, total_amount, paid_amount, remaining_amount, location, notes, source, invoice_number, settlement_status, payer, wbs_code, wbs_coverage_percent, personal_manager_payment, exclude_manager_calculation, timestamp, record_id))
             _save_petty_cash_wbs_links(conn, record_id, wbs_links)
             conn.commit()
             flash("رکورد هزینه با موفقیت ویرایش شد.", "success")
@@ -604,10 +709,42 @@ def init_petty_cash_routes(app):
 
         conn = utils.get_db_connection()
         try:
+            project_id = session.get('active_project_id', 1)
+            record = conn.execute(
+                'SELECT receipt_image_path FROM petty_cash WHERE id = ?',
+                (record_id,)
+            ).fetchone()
+            if not record:
+                flash("رکورد هزینه پیدا نشد.", "error")
+                return redirect(url_for('petty_cash_reports'))
+
+            receipt_path = record['receipt_image_path']
+            receipt_is_shared = False
+            if receipt_path:
+                receipt_is_shared = conn.execute(
+                    '''SELECT 1 FROM petty_cash
+                       WHERE receipt_image_path = ? AND id != ? LIMIT 1''',
+                    (receipt_path, record_id)
+                ).fetchone() is not None
+
             conn.execute('DELETE FROM petty_cash_wbs WHERE petty_cash_id = ?', (record_id,))
             conn.execute('DELETE FROM petty_cash WHERE id = ?', (record_id,))
             conn.commit()
-            flash("رکورد هزینه با موفقیت حذف شد.", "success")
+
+            receipt_file = (
+                _receipt_file_for_cleanup(receipt_path, project_id)
+                if receipt_path and not receipt_is_shared else None
+            )
+            if receipt_file and os.path.isfile(receipt_file):
+                try:
+                    os.remove(receipt_file)
+                except OSError as error:
+                    print(f"Could not remove petty cash receipt {receipt_file}: {error}")
+                    flash("رکورد حذف شد، اما فایل رسید پاک نشد؛ گزارش خطا را بررسی کنید.", "warning")
+                else:
+                    flash("رکورد و فایل رسید با موفقیت حذف شدند.", "success")
+            else:
+                flash("رکورد هزینه با موفقیت حذف شد.", "success")
             utils.log_action(session['user']['username'], 'حذف رکورد هزینه', f'رکورد با شناسه {record_id} حذف شد.')
         except Exception as e:
             flash(f"خطایی در حذف رکورد هزینه رخ داد: {e}", "error")
@@ -615,3 +752,4 @@ def init_petty_cash_routes(app):
         finally:
             conn.close()
         return redirect(url_for('petty_cash_reports'))
+
