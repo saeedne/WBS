@@ -1,4 +1,4 @@
-from flask import render_template, request, redirect, url_for, session, flash, jsonify, send_file, abort
+from flask import render_template, request, redirect, url_for, session, flash, jsonify, send_file, abort, g
 import sqlite3
 import json
 import os
@@ -6,6 +6,7 @@ import re
 import shutil
 import uuid
 import zipfile
+import hashlib
 from urllib.parse import quote, unquote, urlsplit
 from itertools import chain
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -15,13 +16,363 @@ import jdatetime
 import utils
 
 
-def has_permission(page_name):
+SESSION_IDLE_TIMEOUT = timedelta(minutes=10)
+MAX_CONCURRENT_SESSIONS = 2
+LOGIN_SESSION_KEY = '_login_session_id'
+
+
+def _timestamp(value=None):
+    return (value or datetime.utcnow()).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _create_login_session(username, replacing_session_id=None):
+    """Create a tracked login session, keeping the per-user limit atomic."""
+    conn = utils.get_auth_db_connection()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        now = datetime.utcnow()
+        now_text = _timestamp(now)
+        cutoff = _timestamp(now - SESSION_IDLE_TIMEOUT)
+        conn.execute('DELETE FROM active_sessions WHERE last_activity_at <= ?', (cutoff,))
+        active_count = conn.execute(
+            '''SELECT COUNT(*) FROM active_sessions
+               WHERE username = ? AND session_id != COALESCE(?, '')''',
+            (username, replacing_session_id)
+        ).fetchone()[0]
+        if active_count >= MAX_CONCURRENT_SESSIONS:
+            conn.commit()
+            return None
+
+        if replacing_session_id:
+            conn.execute('DELETE FROM active_sessions WHERE session_id = ?', (replacing_session_id,))
+        session_id = uuid.uuid4().hex
+        conn.execute(
+            '''INSERT INTO active_sessions (session_id, username, created_at, last_activity_at)
+               VALUES (?, ?, ?, ?)''',
+            (session_id, username, now_text, now_text)
+        )
+        conn.commit()
+        return session_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _touch_login_session(username, session_id):
+    if not username or not session_id:
+        return False
+    now = datetime.utcnow()
+    conn = utils.get_auth_db_connection()
+    try:
+        updated = conn.execute(
+            '''UPDATE active_sessions SET last_activity_at = ?
+               WHERE session_id = ? AND username = ? AND last_activity_at > ?''',
+            (_timestamp(now), session_id, username, _timestamp(now - SESSION_IDLE_TIMEOUT))
+        ).rowcount
+        if not updated:
+            conn.execute('DELETE FROM active_sessions WHERE session_id = ?', (session_id,))
+        conn.commit()
+        return updated == 1
+    finally:
+        conn.close()
+
+
+def _revoke_login_session(session_id):
+    if not session_id:
+        return
+    conn = utils.get_auth_db_connection()
+    try:
+        conn.execute('DELETE FROM active_sessions WHERE session_id = ?', (session_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _clear_login_session():
+    _revoke_login_session(session.get(LOGIN_SESSION_KEY))
+    session.clear()
+
+
+PERMISSION_GROUPS = [
+    ('داشبورد', [('dashboard.view', 'مشاهده داشبورد'), ('admin_dashboard.view', 'مشاهده پنل مدیریت')]),
+    ('ثبت تردد', [('attendance.view', 'مشاهده صفحه ثبت تردد'), ('attendance.register', 'ثبت تردد و فعالیت موقت')]),
+    ('مدیریت کارکنان', [('employees.view', 'مشاهده کارکنان'), ('employees.create', 'افزودن کارمند'), ('employees.edit', 'ویرایش کارمند'), ('employees.delete', 'حذف کارمند'), ('employees.import', 'ورود کارکنان از فایل'), ('employees.export', 'خروجی کارکنان')]),
+    ('گزارش ترددها', [('attendance_reports.view', 'مشاهده گزارش تردد'), ('attendance_records.edit', 'ویرایش رکورد تردد'), ('attendance_records.delete', 'حذف رکورد تردد و پاک‌سازی'), ('attendance_reports.export', 'خروجی گزارش تردد')]),
+    ('ثبت هزینه', [('petty_cash.view', 'مشاهده ثبت هزینه'), ('petty_cash.create', 'ثبت هزینه'), ('petty_cash.autocomplete', 'مشاهده پیشنهادهای ورودی هزینه')]),
+    ('گزارش هزینه', [('petty_cash_reports.view', 'مشاهده گزارش هزینه'), ('petty_cash_reports.manager_financials.view', 'مشاهده اطلاعات مالی مدیر'), ('petty_cash_records.edit', 'ویرایش هزینه'), ('petty_cash_records.delete', 'حذف هزینه'), ('petty_cash_reports.export', 'خروجی گزارش هزینه'), ('petty_cash.receipt.view', 'مشاهده فایل رسید')]),
+    ('ثبت روزمزد', [('daily_workers.view', 'مشاهده ثبت روزمزد'), ('daily_workers.create', 'ثبت روزمزد'), ('daily_workers.autocomplete', 'مشاهده پیشنهادهای ورودی روزمزد')]),
+    ('گزارش روزمزد', [('daily_worker_reports.view', 'مشاهده گزارش روزمزد'), ('daily_worker_records.edit', 'ویرایش رکورد روزمزد'), ('daily_worker_records.delete', 'حذف رکورد روزمزد'), ('daily_worker_reports.export', 'خروجی گزارش روزمزد')]),
+    ('ثبت تأسیسات', [('facilities.view', 'مشاهده ثبت تأسیسات'), ('facilities.create', 'ثبت گزارش تأسیسات'), ('facilities.autocomplete', 'مشاهده پیشنهادهای ورودی تأسیسات')]),
+    ('گزارش تأسیسات', [('facilities_reports.view', 'مشاهده گزارش تأسیسات'), ('facilities_records.edit', 'ویرایش گزارش تأسیسات'), ('facilities_records.delete', 'حذف گزارش تأسیسات'), ('facilities_reports.export', 'خروجی گزارش تأسیسات')]),
+    ('امور مالی', [('financial_records.view', 'مشاهده فرم‌های مالی'), ('financial_records.create', 'ثبت درآمد و هزینه'), ('financial_reports.view', 'مشاهده گزارش مالی')]),
+    ('محاسبه حقوق', [('payroll.view', 'مشاهده صفحه محاسبه حقوق'), ('payroll.calculate', 'محاسبه حقوق'), ('payroll.export', 'خروجی محاسبه حقوق')]),
+    ('ساختار شکست WBS', [('project_wbs.view', 'مشاهده WBS'), ('project_wbs.create', 'افزودن آیتم WBS'), ('project_wbs.edit', 'ویرایش آیتم‌های WBS'), ('project_wbs.delete', 'حذف آیتم‌های WBS'), ('project_wbs.import', 'ورود WBS از اکسل'), ('project_wbs.export', 'خروجی WBS فعلی'), ('project_wbs.template', 'دانلود فایل نمونه WBS')]),
+    ('پیشرفت فیزیکی', [('project_progress.view', 'مشاهده پیشرفت فیزیکی'), ('project_progress.update', 'ثبت یا ویرایش پیشرفت'), ('project_progress.export', 'خروجی پیشرفت فیزیکی')]),
+    ('مدیریت کاربران', [('users.view', 'مشاهده کاربران'), ('users.create', 'افزودن کاربر'), ('users.edit', 'ویرایش کاربر و رمز'), ('users.delete', 'حذف کاربر'), ('users.assign_roles', 'تخصیص نقش به کاربر'), ('users.logs.view', 'مشاهده گزارش فعالیت کاربران')]),
+    ('مدیریت نقش‌ها', [('roles.manage', 'ساخت، ویرایش و حذف نقش و مجوزها')]),
+    ('مدیریت پروژه‌ها', [('projects.select', 'انتخاب پروژه'), ('projects.create', 'ساخت پروژه'), ('projects.edit', 'ویرایش پروژه'), ('projects.export', 'تهیه خروجی پروژه'), ('projects.delete', 'حذف پروژه')]),
+]
+
+ALL_PERMISSION_CODES = {
+    code for _, permissions in PERMISSION_GROUPS for code, _ in permissions
+}
+
+LEGACY_PERMISSION_MAP = {
+    'dashboard': ['dashboard.view'],
+    'admin_dashboard': ['admin_dashboard.view'],
+    'index': ['attendance.view', 'attendance.register'],
+    'management': ['employees.view', 'employees.create', 'employees.edit', 'employees.delete', 'employees.import', 'employees.export'],
+    'reports': ['attendance_reports.view', 'attendance_records.edit', 'attendance_records.delete', 'attendance_reports.export'],
+    'petty_cash': ['petty_cash.view', 'petty_cash.create', 'petty_cash.autocomplete'],
+    'petty_cash_reports': ['petty_cash_reports.view', 'petty_cash_records.edit', 'petty_cash_records.delete', 'petty_cash_reports.export', 'petty_cash.receipt.view'],
+    'daily_worker': ['daily_workers.view', 'daily_workers.create', 'daily_workers.autocomplete'],
+    'daily_worker_reports': ['daily_worker_reports.view', 'daily_worker_records.edit', 'daily_worker_records.delete', 'daily_worker_reports.export'],
+    'facilities': ['facilities.view', 'facilities.create', 'facilities.autocomplete'],
+    'facilities_reports': ['facilities_reports.view', 'facilities_records.edit', 'facilities_records.delete', 'facilities_reports.export'],
+    'financial_records': ['financial_records.view', 'financial_records.create'],
+    'financial_reports': ['financial_reports.view'],
+    'payroll_calculation': ['payroll.view', 'payroll.calculate', 'payroll.export'],
+    'project_wbs': ['project_wbs.view', 'project_wbs.create', 'project_wbs.edit', 'project_wbs.delete', 'project_wbs.import', 'project_wbs.export', 'project_wbs.template'],
+    'project_progress': ['project_progress.view', 'project_progress.update', 'project_progress.export'],
+    'users': ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.assign_roles', 'users.logs.view', 'roles.manage'],
+}
+
+ENDPOINT_PERMISSIONS = {
+    'root_route': ('__any__',), 'admin_dashboard': ('admin_dashboard.view',), 'dashboard': ('dashboard.view',),
+    'index': ('attendance.view',), 'check_status': ('attendance.register',), 'check_temp_activities': ('attendance.register',),
+    'management': ('employees.view',), 'add_employee': ('employees.create',), 'edit_employee': ('employees.edit',), 'delete_employee': ('employees.delete',), 'get_employee_data': ('employees.view',), 'export_employees': ('employees.export',), 'import_employees': ('employees.import',),
+    'reports': ('attendance_reports.view',), 'export_filtered': ('attendance_reports.export',), 'export_all_to_single_xlsx': ('attendance_reports.export',), 'export_all': ('attendance_reports.export',), 'export_employee': ('attendance_reports.export',), 'export_zip': ('attendance_reports.export',), 'bulk_delete_logs': ('attendance_records.delete',), 'bulk_submit': ('attendance.register',), 'save_activity': ('attendance.register',), 'get_temp_activity': ('attendance.register',), 'edit_log': ('attendance_records.edit',), 'delete_log': ('attendance_records.delete',), 'clear_data': ('attendance_records.delete',), 'lookup_employee': ('attendance.register',),
+    'petty_cash': ('petty_cash.view',), 'add_petty_cash': ('petty_cash.create',), 'autocomplete_petty_cash_field': ('petty_cash.autocomplete',), 'petty_cash_reports': ('petty_cash_reports.view',), 'export_petty_cash_reports': ('petty_cash_reports.export',), 'edit_petty_cash': ('petty_cash_records.edit',), 'delete_petty_cash': ('petty_cash_records.delete',),
+    'daily_worker': ('daily_workers.view',), 'add_daily_worker': ('daily_workers.create',), 'autocomplete_daily_worker_field': ('daily_workers.autocomplete',), 'daily_worker_reports': ('daily_worker_reports.view',), 'export_daily_worker_reports': ('daily_worker_reports.export',), 'edit_daily_worker': ('daily_worker_records.edit',), 'delete_daily_worker': ('daily_worker_records.delete',), 'delete_multiple_daily_worker': ('daily_worker_records.delete',),
+    'facilities': ('facilities.view',), 'add_facilities_log': ('facilities.create',), 'autocomplete_present_employees': ('facilities.autocomplete',), 'autocomplete_facilities_field': ('facilities.autocomplete',), 'facilities_reports': ('facilities_reports.view',), 'export_facilities_reports': ('facilities_reports.export',), 'edit_facilities_log': ('facilities_records.edit',), 'delete_facilities_log': ('facilities_records.delete',),
+    'financial_records': ('financial_records.view',), 'add_income': ('financial_records.create',), 'add_expense': ('financial_records.create',), 'financial_reports': ('financial_reports.view',),
+    'payroll_calculation': ('payroll.view',), 'calculate_payroll': ('payroll.calculate',), 'export_payroll_calculation': ('payroll.export',),
+    'project_wbs': ('project_wbs.view',), 'add_project_wbs': ('project_wbs.create',), 'edit_project_wbs': ('project_wbs.edit',), 'save_selected_project_wbs': ('project_wbs.edit',), 'delete_project_wbs': ('project_wbs.delete',), 'delete_selected_project_wbs': ('project_wbs.delete',), 'import_project_wbs': ('project_wbs.import',), 'download_project_wbs_current': ('project_wbs.export',), 'download_project_wbs_template': ('project_wbs.template',), 'project_progress': ('project_progress.view',), 'project_progress_data': ('project_progress.view',), 'project_wbs_options': ('project_progress.view',), 'download_project_progress_excel': ('project_progress.export',),
+    'petty_cash_by_date_range': ('petty_cash_reports.view',), 'petty_cash_by_date': ('petty_cash_reports.view',), 'petty_cash_chart_data': ('petty_cash_reports.view',), 'daily_workers_by_date_range': ('daily_worker_reports.view',), 'facilities_by_date_range': ('facilities_reports.view',),
+    'project_upload': ('petty_cash.receipt.view',), 'legacy_project_upload': ('petty_cash.receipt.view',),
+    'select_project': ('projects.select',), 'create_project_route': ('projects.create',), 'edit_project_route': ('projects.edit',), 'begin_project_export': ('projects.export',), 'download_project_export': ('projects.export',), 'cancel_project_export_route': ('projects.delete',), 'delete_project_route': ('projects.delete',),
+    'users': ('users.view',), 'get_permissions_route': ('users.assign_roles',), 'get_user_logs': ('users.logs.view',), 'add_user': ('users.create',), 'delete_user': ('users.delete',), 'edit_user': ('users.edit',), 'update_permissions': ('users.assign_roles',),
+    'roles': ('roles.manage',), 'create_role': ('roles.manage',), 'edit_role': ('roles.manage',), 'delete_role': ('roles.manage',),
+}
+
+
+def _effective_permission_codes():
     user = session.get('user', {})
-    # فقط حساب اصلی سیستم دسترسی کامل دارد؛ سایر کاربران، حتی با نقش admin،
-    # فقط به بخش‌هایی که در دسترسی‌هایشان فعال شده است وارد می‌شوند.
+    username = user.get('username')
+    if not username:
+        return set()
+    if username == 'admin':
+        return set(ALL_PERMISSION_CODES)
+    cache = getattr(g, '_effective_permission_cache', None)
+    if cache is not None:
+        return cache
+
+    conn = utils.get_auth_db_connection()
+    try:
+        role_rows = conn.execute('''
+            SELECT rp.permission_code
+            FROM user_roles ur
+            JOIN role_permissions rp ON rp.role_id = ur.role_id
+            WHERE ur.username = ?
+        ''', (username,)).fetchall()
+        effective = {row['permission_code'] for row in role_rows}
+        override_rows = conn.execute(
+            'SELECT permission_code, effect FROM user_permission_overrides WHERE username = ?',
+            (username,)
+        ).fetchall()
+        for row in override_rows:
+            if row['effect'] == 'allow':
+                effective.add(row['permission_code'])
+            else:
+                effective.discard(row['permission_code'])
+    finally:
+        conn.close()
+    g._effective_permission_cache = effective
+    return effective
+
+
+def has_permission(permission_code):
+    """Check granular permissions while accepting legacy page keys during transition."""
+    user = session.get('user', {})
     if user.get('username') == 'admin':
         return True
-    return user.get('permissions', {}).get(page_name, False)
+    effective = _effective_permission_codes()
+    legacy_codes = LEGACY_PERMISSION_MAP.get(permission_code)
+    if legacy_codes is not None:
+        return any(code in effective for code in legacy_codes)
+    return permission_code in effective
+
+
+def has_any_permission():
+    return bool(_effective_permission_codes())
+
+
+def initialize_permission_system():
+    """Create the role/permission catalog and migrate existing page grants once."""
+    conn = utils.get_auth_db_connection()
+    try:
+        conn.executescript('''
+            CREATE TABLE IF NOT EXISTS permissions (
+                code TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                category TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                description TEXT NOT NULL DEFAULT '',
+                legacy_key TEXT UNIQUE,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS role_permissions (
+                role_id INTEGER NOT NULL,
+                permission_code TEXT NOT NULL,
+                PRIMARY KEY (role_id, permission_code),
+                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+                FOREIGN KEY (permission_code) REFERENCES permissions(code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS user_roles (
+                username TEXT NOT NULL,
+                role_id INTEGER NOT NULL,
+                PRIMARY KEY (username, role_id),
+                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+                FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS user_permission_overrides (
+                username TEXT NOT NULL,
+                permission_code TEXT NOT NULL,
+                effect TEXT NOT NULL CHECK (effect IN ('allow', 'deny')),
+                PRIMARY KEY (username, permission_code),
+                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE,
+                FOREIGN KEY (permission_code) REFERENCES permissions(code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS app_migrations (
+                migration_key TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS active_sessions (
+                session_id TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_activity_at TEXT NOT NULL,
+                FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_active_sessions_user_activity
+                ON active_sessions (username, last_activity_at);
+        ''')
+        for order, (category, permissions) in enumerate(PERMISSION_GROUPS):
+            for code, label in permissions:
+                conn.execute(
+                    '''INSERT INTO permissions (code, label, category, sort_order) VALUES (?, ?, ?, ?)
+                       ON CONFLICT(code) DO UPDATE SET label = excluded.label,
+                       category = excluded.category, sort_order = excluded.sort_order''',
+                    (code, label, category, order)
+                )
+
+        conn.execute(
+            '''INSERT OR IGNORE INTO roles (name, description, legacy_key, created_at)
+               VALUES (?, ?, ?, ?)''',
+            ('دسترسی پایه', 'دسترسی پیش‌فرض کاربران تازه‌ساخته‌شده به ثبت تردد',
+             'system:default-attendance', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        )
+        default_role_id = conn.execute(
+            'SELECT id FROM roles WHERE legacy_key = ?', ('system:default-attendance',)
+        ).fetchone()['id']
+        conn.executemany(
+            'INSERT OR IGNORE INTO role_permissions (role_id, permission_code) VALUES (?, ?)',
+            [(default_role_id, 'attendance.view'), (default_role_id, 'attendance.register')]
+        )
+
+        migration_key = 'granular_roles_v1'
+        already_migrated = conn.execute(
+            'SELECT 1 FROM app_migrations WHERE migration_key = ?', (migration_key,)
+        ).fetchone()
+        if not already_migrated:
+            users = conn.execute('SELECT username, role, permissions FROM users').fetchall()
+            for user in users:
+                try:
+                    legacy = json.loads(user['permissions'] or '{}')
+                except (TypeError, json.JSONDecodeError):
+                    legacy = {}
+                granted = set()
+                if user['username'] == 'admin':
+                    granted.update(ALL_PERMISSION_CODES)
+                elif user['role'] != 'admin':
+                    for legacy_key, codes in LEGACY_PERMISSION_MAP.items():
+                        if legacy.get(legacy_key):
+                            granted.update(codes)
+                if not granted:
+                    continue
+                signature = '\n'.join(sorted(granted))
+                legacy_key = hashlib.sha256(signature.encode('utf-8')).hexdigest()
+                role_name = f"دسترسی‌های قبلی {legacy_key[:8]}"
+                conn.execute(
+                    'INSERT OR IGNORE INTO roles (name, description, legacy_key, created_at) VALUES (?, ?, ?, ?)',
+                    (role_name, 'نقش مهاجرت‌شده از دسترسی‌های قبلی', legacy_key, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                )
+                role_id = conn.execute('SELECT id FROM roles WHERE legacy_key = ?', (legacy_key,)).fetchone()['id']
+                conn.executemany(
+                    'INSERT OR IGNORE INTO role_permissions (role_id, permission_code) VALUES (?, ?)',
+                    [(role_id, code) for code in granted]
+                )
+                conn.execute(
+                    'INSERT OR IGNORE INTO user_roles (username, role_id) VALUES (?, ?)',
+                    (user['username'], role_id)
+                )
+            conn.execute(
+                'INSERT INTO app_migrations (migration_key, applied_at) VALUES (?, ?)',
+                (migration_key, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+
+        # Retire the old account-level admin flag for every account except the
+        # reserved username "admin". Legacy roles created from the old
+        # account-level permission fields are removed from former admin-type
+        # accounts; explicitly-created roles (legacy_key IS NULL) remain.
+        single_admin_migration = 'single_admin_account_v1'
+        if not conn.execute(
+                'SELECT 1 FROM app_migrations WHERE migration_key = ?',
+                (single_admin_migration,)
+        ).fetchone():
+            conn.execute('''
+                DELETE FROM user_roles
+                WHERE username = 'admin' AND role_id IN (
+                    SELECT id FROM roles WHERE legacy_key IS NOT NULL
+                )
+            ''')
+            former_admins = conn.execute(
+                "SELECT username FROM users WHERE username != 'admin' AND role = 'admin'"
+            ).fetchall()
+            for former_admin in former_admins:
+                username = former_admin['username']
+                conn.execute(
+                    "UPDATE users SET role = 'user', permissions = '{}' WHERE username = ?",
+                    (username,)
+                )
+                conn.execute('''
+                    DELETE FROM user_roles
+                    WHERE username = ? AND role_id IN (
+                        SELECT id FROM roles WHERE legacy_key IS NOT NULL
+                    )
+                ''', (username,))
+                has_any_role = conn.execute(
+                    'SELECT 1 FROM user_roles WHERE username = ? LIMIT 1',
+                    (username,)
+                ).fetchone()
+                if not has_any_role:
+                    conn.execute('''
+                        INSERT OR IGNORE INTO user_roles (username, role_id)
+                        SELECT ?, id FROM roles WHERE legacy_key = 'system:default-attendance'
+                    ''', (username,))
+            conn.execute(
+                'INSERT INTO app_migrations (migration_key, applied_at) VALUES (?, ?)',
+                (single_admin_migration, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def login_required(f):
@@ -38,7 +389,9 @@ def role_required(role):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if 'user' not in session or session['user']['role'] != role:
+            user = session.get('user', {})
+            allowed = (user.get('username') == 'admin') if role == 'admin' else has_permission(role)
+            if not user or not allowed:
                 flash('شما به این بخش دسترسی ندارید.', 'error')
                 return redirect(url_for('admin_dashboard'))
             return f(*args, **kwargs)
@@ -59,17 +412,49 @@ def _can_manage_user(username):
         ''', (username,)).fetchone()
         if not row:
             return False
-        if row['role'] == 'admin':
-            return session.get('user', {}).get('role') == 'admin'
+        if username == 'admin':
+            return False
         assigned_projects = utils.get_user_project_ids(username)
         return session.get('active_project_id') in assigned_projects
     finally:
         conn.close()
 
 
-def _can_manage_projects():
-    return (session.get('user', {}).get('role') == 'admin'
-            and has_permission('users'))
+def _can_manage_projects(permission_code='projects.edit', project_id=None):
+    user = session.get('user', {})
+    if user.get('username') == 'admin':
+        return True
+    if not has_permission(permission_code):
+        return False
+    if project_id is None:
+        return True
+    return project_id in utils.get_user_project_ids(user.get('username', ''))
+
+
+def _selected_role_ids(form_values):
+    try:
+        requested = {int(value) for value in form_values if str(value).isdigit()}
+    except (TypeError, ValueError):
+        return set()
+    if not requested:
+        return set()
+    conn = utils.get_auth_db_connection()
+    try:
+        found = {row['id'] for row in conn.execute(
+            f"SELECT id FROM roles WHERE id IN ({','.join('?' for _ in requested)})",
+            tuple(requested)
+        ).fetchall()}
+    finally:
+        conn.close()
+    return requested if requested == found else None
+
+
+def _replace_user_roles(conn, username, role_ids):
+    conn.execute('DELETE FROM user_roles WHERE username = ?', (username,))
+    conn.executemany(
+        'INSERT INTO user_roles (username, role_id) VALUES (?, ?)',
+        [(username, role_id) for role_id in sorted(role_ids)]
+    )
 
 
 def _project_date_to_storage(value):
@@ -125,7 +510,7 @@ def _project_lock_response(project_id, endpoint):
     except (TypeError, ValueError):
         pass
     return render_template('project_locked.html', project_name=utils.get_project_name(project_id),
-                           is_admin=session.get('user', {}).get('role') == 'admin')
+                           is_admin=session.get('user', {}).get('username') == 'admin')
 
 
 def _project_export_paths(token):
@@ -246,7 +631,10 @@ def _write_project_workbook(project, db_path, output_path, attachment_link_map):
 
         table_names = [row['name'] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-        ).fetchall() if row['name'] not in {'users', 'projects', 'user_projects'}]
+        ).fetchall() if row['name'] not in {
+            'users', 'projects', 'user_projects', 'permissions', 'roles',
+            'role_permissions', 'user_roles', 'user_permission_overrides', 'app_migrations'
+        }]
         for table_name in table_names:
             quoted_table = '"' + table_name.replace('"', '""') + '"'
             columns = [row['name'] for row in conn.execute(f'PRAGMA table_info({quoted_table})').fetchall()]
@@ -386,7 +774,10 @@ def _delete_project_data(project_id, token):
         try:
             if project_id == 1:
                 conn.execute('BEGIN IMMEDIATE')
-                protected_tables = {'users', 'projects', 'user_projects'}
+                protected_tables = {
+                    'users', 'projects', 'user_projects', 'permissions', 'roles',
+                    'role_permissions', 'user_roles', 'user_permission_overrides', 'app_migrations'
+                }
                 table_names = [row['name'] for row in conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 ).fetchall()]
@@ -415,17 +806,37 @@ def _delete_project_data(project_id, token):
 
 
 def init_auth_system(app):
+    initialize_permission_system()
+    app.permanent_session_lifetime = SESSION_IDLE_TIMEOUT
+    app.jinja_env.globals['can_permission'] = has_permission
+    app.jinja_env.globals['can_any_permission'] = has_any_permission
+
     @app.context_processor
     def inject_project_switch_visibility():
         user = session.get('user')
         projects = utils.list_projects() if user else []
         if not user or len(projects) <= 1:
             return {'show_project_switch': False}
-        if user.get('role') == 'admin':
+        if user.get('username') == 'admin':
             return {'show_project_switch': True}
         assigned_ids = set(utils.get_user_project_ids(user['username']))
         available_count = sum(project['id'] in assigned_ids for project in projects)
         return {'show_project_switch': available_count > 1}
+
+    @app.before_request
+    def enforce_login_session_activity():
+        endpoint = request.endpoint
+        if endpoint in {'login', 'static', 'service_worker_file'}:
+            return None
+        user = session.get('user')
+        if not user:
+            return None
+        session_id = session.get(LOGIN_SESSION_KEY)
+        if _touch_login_session(user.get('username'), session_id):
+            return None
+        session.clear()
+        flash('به‌دلیل ۱۰ دقیقه بی‌فعالیتی از سیستم خارج شدید. لطفاً دوباره وارد شوید.', 'error')
+        return redirect(url_for('login'))
 
     @app.before_request
     def enforce_active_project():
@@ -447,7 +858,7 @@ def init_auth_system(app):
         if endpoint in project_management_endpoints:
             return None
 
-        if user.get('role') == 'admin':
+        if user.get('username') == 'admin':
             project_id = session.get('active_project_id')
             project_name = utils.get_project_name(project_id)
             if not project_name:
@@ -473,7 +884,7 @@ def init_auth_system(app):
         assigned_project_ids = utils.get_user_project_ids(user['username'])
         assigned_project_ids = [pid for pid in assigned_project_ids if utils.get_project_name(pid)]
         if not assigned_project_ids:
-            session.clear()
+            _clear_login_session()
             flash('برای این کاربر پروژه‌ای تعیین نشده است؛ با مدیر سیستم تماس بگیرید.', 'error')
             return redirect(url_for('login'))
 
@@ -491,6 +902,22 @@ def init_auth_system(app):
             return locked_response
         return None
 
+    @app.before_request
+    def enforce_endpoint_permission():
+        endpoint = request.endpoint
+        required = ENDPOINT_PERMISSIONS.get(endpoint)
+        if required is None:
+            return None
+        if required == ('__any__',):
+            allowed = has_any_permission()
+        else:
+            allowed = any(has_permission(permission) for permission in required)
+        if allowed:
+            return None
+        if request.path.startswith('/api/') or request.is_json:
+            return jsonify({'error': 'Access Denied'}), 403
+        return 'Access Denied', 403
+
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
@@ -506,7 +933,15 @@ def init_auth_system(app):
                 conn.close()
 
             if user and check_password_hash(user['password'], password):
+                new_session_id = _create_login_session(
+                    user['username'], session.get(LOGIN_SESSION_KEY)
+                )
+                if not new_session_id:
+                    flash('این حساب هم‌اکنون دو نشست فعال دارد. ابتدا از یکی از نشست‌ها خارج شوید و دوباره تلاش کنید.', 'error')
+                    return redirect(url_for('login'))
                 session.clear()
+                session.permanent = True
+                session[LOGIN_SESSION_KEY] = new_session_id
                 session['user'] = {
                     'username': user['username'],
                     'name': user['name'],
@@ -514,7 +949,7 @@ def init_auth_system(app):
                     'permissions': json.loads(user['permissions'])
                 }
                 flash('ورود با موفقیت انجام شد.', 'success')
-                if user['role'] == 'admin':
+                if user['username'] == 'admin':
                     projects = utils.list_projects()
                     if len(projects) == 1:
                         if projects[0]['deletion_token']:
@@ -522,14 +957,14 @@ def init_auth_system(app):
                         session['active_project_id'] = projects[0]['id']
                         session['active_project_name'] = projects[0]['name']
                         utils.log_action(user['username'], 'ورود به پروژه', projects[0]['name'])
-                        return redirect(url_for('dashboard'))
+                        return redirect(url_for('root_route'))
                     return redirect(url_for('select_project'))
 
                 project_ids = utils.get_user_project_ids(user['username'])
                 available_projects = [project for project in utils.list_projects()
                                       if project['id'] in project_ids]
                 if not available_projects:
-                    session.clear()
+                    _clear_login_session()
                     flash('برای این کاربر پروژه‌ای تعیین نشده است؛ با مدیر سیستم تماس بگیرید.', 'error')
                     return redirect(url_for('login'))
                 if len(available_projects) > 1:
@@ -539,7 +974,7 @@ def init_auth_system(app):
                 session['active_project_id'] = available_projects[0]['id']
                 session['active_project_name'] = available_projects[0]['name']
                 utils.log_action(user['username'], 'ورود به پروژه', session['active_project_name'])
-                return redirect(url_for('dashboard'))
+                return redirect(url_for('root_route'))
 
             flash('نام کاربری یا رمز عبور اشتباه است.', 'error')
             return redirect(url_for('login'))
@@ -553,7 +988,7 @@ def init_auth_system(app):
         lock = utils.get_project_deletion_lock(active_project_id) if active_project_id else None
         if username and not (lock and lock['deletion_token']):
             utils.log_action(username, 'خروج از سیستم', 'خروج موفق')
-        session.clear()
+        _clear_login_session()
         flash('شما با موفقیت از سیستم خارج شدید.', 'success')
         return redirect(url_for('login'))
 
@@ -561,7 +996,7 @@ def init_auth_system(app):
     @login_required
     def select_project():
         user = session['user']
-        if user.get('role') == 'admin':
+        if user.get('username') == 'admin':
             projects = utils.list_projects()
             allowed_project_ids = {project['id'] for project in projects}
         else:
@@ -572,14 +1007,14 @@ def init_auth_system(app):
             return redirect(url_for('users'))
         if len(projects) == 1:
             if projects[0]['deletion_token']:
-                if user.get('role') == 'admin':
+                if user.get('username') == 'admin':
                     flash('این پروژه در حال خروجی‌گیری و حذف است.', 'error')
                     return redirect(url_for('users'))
                 return render_template('project_locked.html', project_name=projects[0]['name'], is_admin=False)
             session['active_project_id'] = projects[0]['id']
             session['active_project_name'] = projects[0]['name']
             utils.log_action(user['username'], 'ورود به پروژه', projects[0]['name'])
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('root_route'))
         if request.method == 'POST':
             project_id = request.form.get('project_id', type=int)
             project_name = utils.get_project_name(project_id)
@@ -589,19 +1024,18 @@ def init_auth_system(app):
             project_record = next((item for item in projects if item['id'] == project_id), None)
             if project_record and project_record['deletion_token']:
                 flash('این پروژه برای تهیه خروجی و حذف موقتاً قفل شده است.', 'error')
-                return redirect(url_for('users') if user.get('role') == 'admin' else url_for('select_project'))
+                return redirect(url_for('users') if user.get('username') == 'admin' else url_for('select_project'))
             session['active_project_id'] = project_id
             session['active_project_name'] = project_name
             utils.log_action(user['username'], 'ورود به پروژه', project_name)
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('root_route'))
 
         return render_template('select_project.html', projects=projects)
 
     @app.route('/create_project', methods=['POST'])
     @login_required
-    @role_required('admin')
     def create_project_route():
-        if not _can_manage_projects():
+        if not _can_manage_projects('projects.create'):
             return 'Access Denied', 403
         try:
             duration_text = request.form.get('contract_duration_months', '').strip()
@@ -614,6 +1048,16 @@ def init_auth_system(app):
                 request.form.get('name'), request.form.get('employer_name'),
                 _project_date_to_storage(request.form.get('start_date')), duration, estimate
             )
+            if session.get('user', {}).get('username') != 'admin':
+                conn = utils.get_auth_db_connection()
+                try:
+                    conn.execute('INSERT OR IGNORE INTO user_projects (username, project_id) VALUES (?, ?)',
+                                 (session['user']['username'], project_id))
+                    conn.commit()
+                finally:
+                    conn.close()
+                session['active_project_id'] = project_id
+                session['active_project_name'] = utils.get_project_name(project_id)
             if not utils.get_project_name(session.get('active_project_id')):
                 session['active_project_id'] = project_id
                 session['active_project_name'] = utils.get_project_name(project_id)
@@ -628,7 +1072,7 @@ def init_auth_system(app):
     @app.route('/edit_project', methods=['POST'])
     @login_required
     def edit_project_route():
-        if not _can_manage_projects():
+        if not _can_manage_projects('projects.edit', request.form.get('project_id', type=int)):
             return 'Access Denied', 403
         try:
             project_id = request.form.get('project_id', type=int)
@@ -658,7 +1102,7 @@ def init_auth_system(app):
     @app.route('/projects/<int:project_id>/export-before-delete', methods=['POST'])
     @login_required
     def begin_project_export(project_id):
-        if not _can_manage_projects():
+        if not _can_manage_projects('projects.export', project_id):
             return 'Access Denied', 403
         project = next((item for item in utils.list_projects() if item['id'] == project_id), None)
         if not project:
@@ -688,7 +1132,7 @@ def init_auth_system(app):
     @app.route('/projects/<int:project_id>/cancel-export', methods=['POST'])
     @login_required
     def cancel_project_export_route(project_id):
-        if not _can_manage_projects():
+        if not _can_manage_projects('projects.delete', project_id):
             return 'Access Denied', 403
         lock = utils.get_project_deletion_lock(project_id)
         if lock and lock['deletion_token']:
@@ -704,9 +1148,10 @@ def init_auth_system(app):
     @app.route('/project-export/<token>/<kind>')
     @login_required
     def download_project_export(token, kind):
-        if not _can_manage_projects() or kind not in {'excel', 'zip'}:
-            return 'Access Denied', 403
         pending = session.get('pending_project_export') or {}
+        if (not _can_manage_projects('projects.export', pending.get('project_id'))
+                or kind not in {'excel', 'zip'}):
+            return 'Access Denied', 403
         if pending.get('token') != token:
             abort(404)
         export_dir, xlsx_path, zip_path = _project_export_paths(token)
@@ -722,7 +1167,7 @@ def init_auth_system(app):
     @app.route('/projects/<int:project_id>/delete', methods=['POST'])
     @login_required
     def delete_project_route(project_id):
-        if not _can_manage_projects():
+        if not _can_manage_projects('projects.delete', project_id):
             return 'Access Denied', 403
         pending = session.get('pending_project_export') or {}
         if pending.get('project_id') != project_id or set(pending.get('downloaded', [])) != {'excel', 'zip'}:
@@ -762,7 +1207,7 @@ def init_auth_system(app):
     @app.route('/users')
     @login_required
     def users():
-        if not has_permission('users'):
+        if not has_permission('users.view'):
             flash('شما به این بخش دسترسی ندارید.', 'error')
             return redirect(url_for('admin_dashboard'))
 
@@ -770,17 +1215,6 @@ def init_auth_system(app):
         try:
             if session['user']['username'] == 'admin':
                 user_rows = conn.execute('SELECT * FROM users').fetchall()
-            elif session['user'].get('role') == 'admin':
-                active_project_id = session.get('active_project_id')
-                if active_project_id:
-                    user_rows = conn.execute(
-                        '''SELECT DISTINCT u.* FROM users u
-                           LEFT JOIN user_projects up ON up.username = u.username
-                           WHERE u.role = 'admin' OR up.project_id = ?''',
-                        (active_project_id,)
-                    ).fetchall()
-                else:
-                    user_rows = conn.execute("SELECT * FROM users WHERE role = 'admin'").fetchall()
             else:
                 user_rows = conn.execute(
                     '''SELECT u.* FROM users u
@@ -792,7 +1226,7 @@ def init_auth_system(app):
             conn.close()
 
         current_username = session['user']['username']
-        if session['user'].get('role') == 'admin':
+        if session['user'].get('username') == 'admin':
             project_choices = utils.list_projects()
         else:
             active_id = session.get('active_project_id')
@@ -801,23 +1235,162 @@ def init_auth_system(app):
         for row in user_rows:
             user_data = dict(row)
             user_data['project_ids'] = utils.get_user_project_ids(user_data['username'])
+            roles_conn = utils.get_auth_db_connection()
+            try:
+                assigned_roles = roles_conn.execute('''
+                    SELECT r.id, r.name FROM roles r
+                    JOIN user_roles ur ON ur.role_id = r.id
+                    WHERE ur.username = ? ORDER BY r.name COLLATE NOCASE
+                ''', (user_data['username'],)).fetchall()
+            finally:
+                roles_conn.close()
+            user_data['role_ids'] = [role['id'] for role in assigned_roles]
+            user_data['acl_role_names'] = [role['name'] for role in assigned_roles]
             prepared_users.append(user_data)
+
+        roles_conn = utils.get_auth_db_connection()
+        try:
+            available_roles = roles_conn.execute(
+                'SELECT id, name, description FROM roles ORDER BY name COLLATE NOCASE'
+            ).fetchall()
+        finally:
+            roles_conn.close()
 
         active_lock = utils.get_project_deletion_lock(session.get('active_project_id'))
         if not (active_lock and active_lock['deletion_token']):
             utils.log_action(session['user']['username'], 'مشاهده صفحه مدیریت کاربران')
         projects = [dict(project) for project in utils.list_projects()]
+        if session['user'].get('username') != 'admin':
+            assigned_project_ids = set(utils.get_user_project_ids(current_username))
+            projects = [project for project in projects if project['id'] in assigned_project_ids]
         for project in projects:
             project['start_date_jalali'] = _project_date_to_jalali(project['start_date'])
         return render_template(
             'users.html', users=prepared_users, project_choices=project_choices,
-            projects=projects, can_create_project=_can_manage_projects()
+            projects=projects,
+            can_create_project=_can_manage_projects('projects.create'),
+            can_edit_project=_can_manage_projects('projects.edit'),
+            can_export_projects=_can_manage_projects('projects.export'),
+            can_delete_project=_can_manage_projects('projects.delete'),
+            available_roles=[dict(role) for role in available_roles],
+            can_assign_roles=has_permission('users.assign_roles'),
+            can_manage_roles=has_permission('roles.manage')
         )
+
+    @app.route('/roles')
+    @login_required
+    def roles():
+        conn = utils.get_auth_db_connection()
+        try:
+            role_rows = conn.execute('''
+                SELECT r.id, r.name, r.description, r.legacy_key,
+                       COUNT(DISTINCT ur.username) AS assigned_user_count,
+                       GROUP_CONCAT(DISTINCT u.name) AS assigned_user_names
+                FROM roles r
+                LEFT JOIN user_roles ur ON ur.role_id = r.id
+                LEFT JOIN users u ON u.username = ur.username
+                GROUP BY r.id ORDER BY r.name COLLATE NOCASE
+            ''').fetchall()
+            role_permissions = {}
+            for row in role_rows:
+                codes = conn.execute(
+                    'SELECT permission_code FROM role_permissions WHERE role_id = ?',
+                    (row['id'],)
+                ).fetchall()
+                role_permissions[row['id']] = {item['permission_code'] for item in codes}
+        finally:
+            conn.close()
+        return render_template(
+            'roles.html', roles=[dict(row) for row in role_rows],
+            role_permissions=role_permissions, permission_groups=PERMISSION_GROUPS,
+            permission_codes=ALL_PERMISSION_CODES
+        )
+
+    @app.route('/roles/create', methods=['POST'])
+    @login_required
+    def create_role():
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        selected = set(request.form.getlist('permissions')) & ALL_PERMISSION_CODES
+        if not name:
+            flash('نام نقش را وارد کنید.', 'error')
+            return redirect(url_for('roles'))
+        conn = utils.get_auth_db_connection()
+        try:
+            cursor = conn.execute(
+                'INSERT INTO roles (name, description, created_at) VALUES (?, ?, ?)',
+                (name, description, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            )
+            conn.executemany(
+                'INSERT INTO role_permissions (role_id, permission_code) VALUES (?, ?)',
+                [(cursor.lastrowid, code) for code in selected]
+            )
+            conn.commit()
+            flash('نقش جدید ساخته شد.', 'success')
+            utils.log_action(session['user']['username'], 'ساخت نقش دسترسی', name)
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash('نقشی با این نام وجود دارد.', 'error')
+        finally:
+            conn.close()
+        return redirect(url_for('roles'))
+
+    @app.route('/roles/<int:role_id>/edit', methods=['POST'])
+    @login_required
+    def edit_role(role_id):
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        selected = set(request.form.getlist('permissions')) & ALL_PERMISSION_CODES
+        if not name:
+            flash('نام نقش را وارد کنید.', 'error')
+            return redirect(url_for('roles'))
+        conn = utils.get_auth_db_connection()
+        try:
+            if not conn.execute('SELECT 1 FROM roles WHERE id = ?', (role_id,)).fetchone():
+                flash('نقش پیدا نشد.', 'error')
+                return redirect(url_for('roles'))
+            conn.execute('UPDATE roles SET name = ?, description = ? WHERE id = ?',
+                         (name, description, role_id))
+            conn.execute('DELETE FROM role_permissions WHERE role_id = ?', (role_id,))
+            conn.executemany(
+                'INSERT INTO role_permissions (role_id, permission_code) VALUES (?, ?)',
+                [(role_id, code) for code in selected]
+            )
+            conn.commit()
+            flash('نقش و دسترسی‌های آن به‌روزرسانی شد.', 'success')
+            utils.log_action(session['user']['username'], 'ویرایش نقش دسترسی', name)
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash('نقشی با این نام وجود دارد.', 'error')
+        finally:
+            conn.close()
+        return redirect(url_for('roles'))
+
+    @app.route('/roles/<int:role_id>/delete', methods=['POST'])
+    @login_required
+    def delete_role(role_id):
+        conn = utils.get_auth_db_connection()
+        try:
+            role = conn.execute('SELECT name FROM roles WHERE id = ?', (role_id,)).fetchone()
+            if not role:
+                flash('نقش پیدا نشد.', 'error')
+                return redirect(url_for('roles'))
+            if conn.execute('SELECT 1 FROM user_roles WHERE role_id = ? LIMIT 1', (role_id,)).fetchone():
+                flash('این نقش به کاربران اختصاص دارد؛ ابتدا نقش کاربران را تغییر دهید.', 'error')
+                return redirect(url_for('roles'))
+            conn.execute('DELETE FROM role_permissions WHERE role_id = ?', (role_id,))
+            conn.execute('DELETE FROM roles WHERE id = ?', (role_id,))
+            conn.commit()
+            flash('نقش حذف شد.', 'success')
+            utils.log_action(session['user']['username'], 'حذف نقش دسترسی', role['name'])
+        finally:
+            conn.close()
+        return redirect(url_for('roles'))
 
     @app.route('/get_permissions/<username>')
     @login_required
     def get_permissions_route(username):
-        if not has_permission('users'):
+        if not has_permission('users.assign_roles'):
             return 'Access Denied', 403
         if not _can_manage_user(username):
             return 'Access Denied', 403
@@ -840,8 +1413,6 @@ def init_auth_system(app):
     @login_required
     def get_user_logs(username):
         current_username = session['user']['username']
-        if not has_permission('users') and current_username != username:
-            return 'Access Denied', 403
         if current_username != username and not _can_manage_user(username):
             return 'Access Denied', 403
         if username == 'admin' and current_username != 'admin':
@@ -870,40 +1441,44 @@ def init_auth_system(app):
     @app.route('/add_user', methods=['POST'])
     @login_required
     def add_user():
-        if not has_permission('users'):
+        if not has_permission('users.create'):
             flash('شما به این بخش دسترسی ندارید.', 'error')
             return redirect(url_for('users'))
 
-        username = request.form['username'].lower()
-        name = request.form['name']
+        username = request.form['username'].strip().lower()
+        if username == 'admin':
+            flash('نام کاربری admin برای حساب مدیر سیستم رزرو شده است.', 'error')
+            return redirect(url_for('users'))
+        name = request.form['name'].strip()
         password = request.form.get('password', '').strip()
-        role = request.form['role']
-        if role not in {'user', 'admin'}:
-            return 'Invalid role', 400
-        if role == 'admin' and session['user'].get('role') != 'admin':
-            return 'Access Denied', 403
-        permissions = {
-            'index': True, 'management': False, 'reports': False, 'users': False,
-            'petty_cash': False, 'petty_cash_reports': False,
-            'daily_worker': False, 'daily_worker_reports': False,
-            'admin_dashboard': False, 'financial_records': False,
-            'financial_reports': False, 'dashboard': False, 'facilities': False,
-            'facilities_reports': False, 'payroll_calculation': False,
-            'project_wbs': False, 'project_progress': False
-        }
-        if role == 'admin':
-            permissions = {key: True for key in permissions}
+        role = 'user'
+        permissions = {}
+
+        selected_role_ids = set()
+        can_assign_roles = has_permission('users.assign_roles')
+        if can_assign_roles:
+            selected_role_ids = _selected_role_ids(request.form.getlist('role_ids'))
+            if selected_role_ids is None:
+                return 'Invalid role selection', 400
+        if not can_assign_roles:
+            default_role_conn = utils.get_auth_db_connection()
+            try:
+                default_role = default_role_conn.execute(
+                    'SELECT id FROM roles WHERE legacy_key = ?', ('system:default-attendance',)
+                ).fetchone()
+                selected_role_ids = {default_role['id']} if default_role else set()
+            finally:
+                default_role_conn.close()
 
         project_ids = set()
-        if role != 'admin':
-            requested_ids = request.form.getlist('project_ids')
-            allowed_ids = ({project['id'] for project in utils.list_projects()}
-                           if session['user'].get('role') == 'admin'
-                           else {session.get('active_project_id')})
-            project_ids = {int(pid) for pid in requested_ids if pid.isdigit()} & allowed_ids
-            if not project_ids:
-                flash('برای کاربر عادی دست‌کم یک پروژه انتخاب کنید.', 'error')
-                return redirect(url_for('users'))
+        requested_ids = request.form.getlist('project_ids')
+        allowed_ids = ({project['id'] for project in utils.list_projects()}
+                       if session['user'].get('username') == 'admin'
+                       else {session.get('active_project_id')})
+        project_ids = {int(pid) for pid in requested_ids if pid.isdigit()} & allowed_ids
+        if not project_ids:
+            flash('برای کاربر دست‌کم یک پروژه انتخاب کنید.', 'error')
+            return redirect(url_for('users'))
 
         conn = utils.get_auth_db_connection()
         try:
@@ -911,16 +1486,14 @@ def init_auth_system(app):
                 'INSERT INTO users (username, name, password, role, permissions) VALUES (?, ?, ?, ?, ?)',
                 (username, name, generate_password_hash(password), role, json.dumps(permissions))
             )
-            if role == 'admin':
-                conn.execute('DELETE FROM user_projects WHERE username = ?', (username,))
-            else:
-                conn.executemany(
-                    'INSERT INTO user_projects (username, project_id) VALUES (?, ?)',
-                    [(username, project_id) for project_id in project_ids]
-                )
+            _replace_user_roles(conn, username, selected_role_ids)
+            conn.executemany(
+                'INSERT INTO user_projects (username, project_id) VALUES (?, ?)',
+                [(username, project_id) for project_id in project_ids]
+            )
             conn.commit()
             flash(f"کاربر '{name}' با موفقیت اضافه شد.", 'success')
-            utils.log_action(session['user']['username'], 'افزودن کاربر جدید', f'کاربر: {name} با نقش {role}')
+            utils.log_action(session['user']['username'], 'افزودن کاربر جدید', f'کاربر: {name}')
         except sqlite3.IntegrityError:
             flash(f"نام کاربری '{username}' قبلاً ثبت شده است.", 'error')
         finally:
@@ -930,7 +1503,7 @@ def init_auth_system(app):
     @app.route('/delete_user', methods=['POST'])
     @login_required
     def delete_user():
-        if not has_permission('users'):
+        if not has_permission('users.delete'):
             flash('شما به این بخش دسترسی ندارید.', 'error')
             return redirect(url_for('users'))
 
@@ -944,6 +1517,9 @@ def init_auth_system(app):
         conn = utils.get_auth_db_connection()
         try:
             conn.execute('DELETE FROM user_projects WHERE username = ?', (username,))
+            conn.execute('DELETE FROM user_roles WHERE username = ?', (username,))
+            conn.execute('DELETE FROM user_permission_overrides WHERE username = ?', (username,))
+            conn.execute('DELETE FROM active_sessions WHERE username = ?', (username,))
             conn.execute('DELETE FROM users WHERE username = ?', (username,))
             conn.commit()
             flash(f"کاربر '{username}' با موفقیت حذف شد.", 'success')
@@ -955,79 +1531,58 @@ def init_auth_system(app):
     @app.route('/edit_user', methods=['POST'])
     @login_required
     def edit_user():
-        if not has_permission('users'):
+        if not has_permission('users.edit'):
             flash('شما به این بخش دسترسی ندارید.', 'error')
             return redirect(url_for('users'))
 
         username = request.form['username']
+        if username == 'admin':
+            return 'Access Denied', 403
         if not _can_manage_user(username):
             return 'Access Denied', 403
-        if username == 'admin' and session['user']['username'] != 'admin':
-            flash('امکان ویرایش کاربر admin را ندارید.', 'error')
-            return redirect(url_for('users'))
 
         name = request.form['name']
         password = request.form['password']
-        role = request.form['role']
-        if role not in {'user', 'admin'}:
-            return 'Invalid role', 400
-        if role == 'admin' and session['user'].get('role') != 'admin':
-            return 'Access Denied', 403
+        can_assign_roles = has_permission('users.assign_roles')
+        selected_role_ids = None
+        if can_assign_roles:
+            selected_role_ids = _selected_role_ids(request.form.getlist('role_ids'))
+            if selected_role_ids is None:
+                return 'Invalid role selection', 400
         project_ids = set()
-        if role != 'admin':
-            requested_ids = request.form.getlist('project_ids')
-            allowed_ids = ({project['id'] for project in utils.list_projects()}
-                           if session['user'].get('role') == 'admin'
-                           else {session.get('active_project_id')})
-            project_ids = {int(pid) for pid in requested_ids if pid.isdigit()} & allowed_ids
-            project_ids |= set(utils.get_user_project_ids(username)) - allowed_ids
-            if not project_ids:
-                flash('برای کاربر عادی دست‌کم یک پروژه انتخاب کنید.', 'error')
-                return redirect(url_for('users'))
+        requested_ids = request.form.getlist('project_ids')
+        allowed_ids = ({project['id'] for project in utils.list_projects()}
+                       if session['user'].get('username') == 'admin'
+                       else {session.get('active_project_id')})
+        project_ids = {int(pid) for pid in requested_ids if pid.isdigit()} & allowed_ids
+        project_ids |= set(utils.get_user_project_ids(username)) - allowed_ids
+        if not project_ids:
+            flash('برای کاربر دست‌کم یک پروژه انتخاب کنید.', 'error')
+            return redirect(url_for('users'))
         conn = utils.get_auth_db_connection()
         try:
-            existing_user = conn.execute(
-                'SELECT role, permissions FROM users WHERE username = ?', (username,)
-            ).fetchone()
+            existing_user = conn.execute('SELECT username FROM users WHERE username = ?', (username,)).fetchone()
             if not existing_user:
                 flash('کاربر پیدا نشد.', 'error')
                 return redirect(url_for('users'))
 
             if password:
                 conn.execute(
-                    'UPDATE users SET name = ?, password = ?, role = ? WHERE username = ?',
-                    (name, generate_password_hash(password), role, username)
+                    "UPDATE users SET name = ?, password = ?, role = 'user' WHERE username = ?",
+                    (name, generate_password_hash(password), username)
                 )
             else:
                 conn.execute(
-                    'UPDATE users SET name = ?, role = ? WHERE username = ?',
-                    (name, role, username)
+                    "UPDATE users SET name = ?, role = 'user' WHERE username = ?",
+                    (name, username)
                 )
-
-            permission_names = (
-                'index', 'management', 'reports', 'users', 'petty_cash',
-                'petty_cash_reports', 'daily_worker', 'daily_worker_reports',
-                'admin_dashboard', 'financial_records', 'financial_reports',
-                'dashboard', 'facilities', 'facilities_reports', 'payroll_calculation',
-                'project_wbs', 'project_progress'
+            if can_assign_roles:
+                _replace_user_roles(conn, username, selected_role_ids)
+            conn.execute('DELETE FROM user_projects WHERE username = ?', (username,))
+            conn.executemany(
+                'INSERT INTO user_projects (username, project_id) VALUES (?, ?)',
+                [(username, project_id) for project_id in project_ids]
             )
-            if role == 'admin':
-                permissions = {key: True for key in permission_names}
-                conn.execute('UPDATE users SET permissions = ? WHERE username = ?',
-                             (json.dumps(permissions), username))
-            elif existing_user['role'] == 'admin':
-                permissions = {key: False for key in permission_names}
-                permissions['index'] = True
-                conn.execute('UPDATE users SET permissions = ? WHERE username = ?',
-                             (json.dumps(permissions), username))
-            if role == 'admin':
-                conn.execute('DELETE FROM user_projects WHERE username = ?', (username,))
-            else:
-                conn.execute('DELETE FROM user_projects WHERE username = ?', (username,))
-                conn.executemany(
-                    'INSERT INTO user_projects (username, project_id) VALUES (?, ?)',
-                    [(username, project_id) for project_id in project_ids]
-                )
             conn.commit()
             flash(f"اطلاعات کاربر '{name}' با موفقیت ویرایش شد.", 'success')
             utils.log_action(session['user']['username'], 'ویرایش کاربر', f'اطلاعات کاربر {name} ویرایش شد.')
@@ -1038,35 +1593,5 @@ def init_auth_system(app):
     @app.route('/update_permissions', methods=['POST'])
     @login_required
     def update_permissions():
-        if not has_permission('users'):
-            flash('شما به این بخش دسترسی ندارید.', 'error')
-            return redirect(url_for('users'))
+        abort(410, description='تغییر دسترسی کاربران از طریق نقش‌ها انجام می‌شود.')
 
-        username = request.form['username']
-        if not _can_manage_user(username):
-            return 'Access Denied', 403
-        if username == 'admin' and session['user']['username'] != 'admin':
-            flash('امکان تغییر دسترسی‌های admin را ندارید.', 'error')
-            return redirect(url_for('users'))
-
-        permission_names = (
-            'index', 'management', 'reports', 'users', 'petty_cash',
-            'petty_cash_reports', 'daily_worker', 'daily_worker_reports',
-            'admin_dashboard', 'financial_records', 'financial_reports',
-            'dashboard', 'facilities', 'facilities_reports', 'payroll_calculation',
-            'project_wbs', 'project_progress'
-        )
-        permissions = {name: name in request.form for name in permission_names}
-
-        conn = utils.get_auth_db_connection()
-        try:
-            conn.execute(
-                'UPDATE users SET permissions = ? WHERE username = ?',
-                (json.dumps(permissions), username)
-            )
-            conn.commit()
-            flash(f"دسترسی‌های کاربر '{username}' با موفقیت به‌روزرسانی شد.", 'success')
-            utils.log_action(session['user']['username'], 'به‌روزرسانی دسترسی‌ها', f'دسترسی‌های کاربر {username} به‌روزرسانی شد.')
-        finally:
-            conn.close()
-        return redirect(url_for('users'))
