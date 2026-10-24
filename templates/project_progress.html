@@ -203,7 +203,7 @@
 
 <div class="flex justify-center gap-2 mb-6">
 
-    {% if session['user']['permissions'].get('project_wbs') %}
+    {% if can_permission('project_wbs.view') %}
 
     <a
         href="/project_wbs"
@@ -402,7 +402,7 @@
             جدول جزئیات پیشرفت
         </h2>
 
-        {% if session.get('user', {}).get('role') == 'admin' %}
+        {% if can_permission('project_progress.export') %}
             <a
                 href="{{ url_for('download_project_progress_excel') }}"
                 class="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg"
@@ -1908,6 +1908,37 @@ fetch('/api/project_progress_data')
         );
 
 
+    const requestedExpandCode = new URLSearchParams(window.location.search)
+        .get('expand');
+    if (requestedExpandCode) {
+        const expandBranch = code => {
+            const parentRow = allRows.find(
+                row => (row.dataset.wbsCode || '') === String(code)
+            );
+            const toggle = parentRow && parentRow.querySelector('.wbs-toggle');
+            if (!toggle) return;
+
+            if (toggle.getAttribute('aria-expanded') !== 'true') {
+                toggle.click();
+            }
+
+            getDirectChildrenRows(code).forEach(childRow => {
+                if (childRow.querySelector('.wbs-toggle')) {
+                    expandBranch(childRow.dataset.wbsCode);
+                }
+            });
+        };
+
+        const targetRow = allRows.find(
+            row => (row.dataset.wbsCode || '') === requestedExpandCode
+        );
+        if (targetRow) {
+            expandBranch(requestedExpandCode);
+            targetRow.classList.add('bg-yellow-100');
+            targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
 
 })
 
@@ -1947,3 +1978,4 @@ fetch('/api/project_progress_data')
 </script>
 
 {% endblock %}
+
