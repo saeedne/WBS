@@ -1311,10 +1311,7 @@ def init_routes(app):
     @app.route('/admin_dashboard')
     @auth.login_required
     def admin_dashboard():
-        # Only show dashboard if user has permissions for at least one item or is admin
-        user_permissions = session.get('user', {}).get('permissions', {})
-        is_admin = session.get('user', {}).get('role') == 'admin'
-        if not is_admin and not any(user_permissions.values()):
+        if not auth.has_permission('admin_dashboard.view'):
             flash("شما به این بخش دسترسی ندارید.", "error")
             return redirect(url_for('index'))
         return render_template('admin_dashboard.html')
@@ -1573,3 +1570,4 @@ def init_routes(app):
         total_expense = conn.execute("SELECT SUM(amount) FROM expense WHERE timestamp LIKE ?", (f"{today}%",)).fetchone()[0] or 0
         
         return {'total_income': total_income, 'total_expense': total_expense}
+
