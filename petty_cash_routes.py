@@ -1,5 +1,5 @@
 from flask import render_template, request, redirect, url_for, jsonify, Response, session, flash
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 import io
 import jdatetime
@@ -225,7 +225,7 @@ def init_petty_cash_routes(app):
                 '''SELECT DISTINCT u.username, u.name, u.role
                    FROM users u
                    LEFT JOIN user_projects up ON up.username = u.username
-                   WHERE u.role = 'admin' OR up.project_id = ?
+                   WHERE u.username = 'admin' OR up.project_id = ?
                    ORDER BY u.name''',
                 (session.get('active_project_id', 1),)
             ).fetchall()
@@ -319,14 +319,52 @@ def init_petty_cash_routes(app):
     @app.route('/petty_cash_reports')
     @auth.login_required
     def petty_cash_reports():
-        if not auth.has_permission('petty_cash_reports'):
+        if not auth.has_permission('petty_cash_reports.view'):
             flash("شما به این بخش دسترسی ندارید.", "error")
             return redirect(url_for('admin_dashboard'))
 
         conn = utils.get_db_connection()
-        
-        start_date_fa = request.args.get('start_date')
-        end_date_fa = request.args.get('end_date')
+
+        today = datetime.now().date()
+        default_start_date = jdatetime.date.fromgregorian(
+            date=today - timedelta(days=15)
+        ).strftime('%Y/%m/%d')
+        # Users explicitly granted the manager-financial view start at the
+        # active project's configured start date. Dates are stored in ISO form.
+        if auth.has_permission('petty_cash_reports.manager_financials.view'):
+            registry_conn = utils.get_auth_db_connection()
+            try:
+                project = registry_conn.execute(
+                    'SELECT start_date FROM projects WHERE id = ?',
+                    (session.get('active_project_id'),)
+                ).fetchone()
+            finally:
+                registry_conn.close()
+            if project and project['start_date']:
+                try:
+                    project_start = datetime.strptime(
+                        project['start_date'][:10], '%Y-%m-%d'
+                    ).date()
+                    default_start_date = jdatetime.date.fromgregorian(
+                        date=project_start
+                    ).strftime('%Y/%m/%d')
+                except (TypeError, ValueError):
+                    # Keep the 15-day default if legacy project data is invalid.
+                    pass
+        default_end_date = jdatetime.date.fromgregorian(
+            date=today
+        ).strftime('%Y/%m/%d')
+
+        start_date_fa = (
+            request.args.get('start_date', '')
+            if 'start_date' in request.args
+            else default_start_date
+        )
+        end_date_fa = (
+            request.args.get('end_date', '')
+            if 'end_date' in request.args
+            else default_end_date
+        )
         payer_filter = request.args.get('payer_filter')
         source_filter = request.args.get('source_filter')
         settlement_status_filter = request.args.get('settlement_status_filter')
@@ -386,7 +424,7 @@ def init_petty_cash_routes(app):
         
         try:
             records = conn.execute(query, params).fetchall()
-            show_manager_summary = session.get('user', {}).get('role') == 'admin'
+            show_manager_summary = auth.has_permission('petty_cash_reports.manager_financials.view')
             all_records = conn.execute('SELECT * FROM petty_cash').fetchall() if show_manager_summary else []
             payers = conn.execute("SELECT DISTINCT payer FROM petty_cash").fetchall()
             sources = conn.execute("SELECT DISTINCT source FROM petty_cash WHERE source IS NOT NULL AND TRIM(source) != '' ORDER BY source").fetchall()
@@ -465,7 +503,7 @@ def init_petty_cash_routes(app):
     @app.route('/export/petty_cash_reports')
     @auth.login_required
     def export_petty_cash_reports():
-        if not auth.has_permission('petty_cash_reports'):
+        if not auth.has_permission('petty_cash_reports.export'):
             return "Access Denied", 403
         
         start_date_fa = request.args.get('start_date')
@@ -548,7 +586,7 @@ def init_petty_cash_routes(app):
         output = io.BytesIO()
         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
         worksheet = workbook.add_worksheet('گزارش هزینه')
-        show_manager_summary = session.get('user', {}).get('role') == 'admin'
+        show_manager_summary = auth.has_permission('petty_cash_reports.manager_financials.view')
         
         # Set worksheet direction to right-to-left
         worksheet.right_to_left()
@@ -632,7 +670,7 @@ def init_petty_cash_routes(app):
         output.seek(0)
         
         response = Response(output.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response.headers['Content-Disposition'] = 'attachment; filename=petty_cash_reports.xlsx'
+        response.headers['Content-Disposition'] = 'attachment; filename=Expense_reports.xlsx'
         
         utils.log_action(session['user']['username'], 'خروجی گرفتن از گزارش هزینه')
         return response
@@ -640,7 +678,7 @@ def init_petty_cash_routes(app):
     @app.route('/edit_petty_cash/<int:record_id>', methods=['POST'])
     @auth.login_required
     def edit_petty_cash(record_id):
-        if not auth.has_permission('petty_cash_reports'):
+        if not auth.has_permission('petty_cash_records.edit'):
             flash("شما به این بخش دسترسی ندارید.", "error")
             return redirect(url_for('petty_cash_reports'))
 
@@ -703,7 +741,7 @@ def init_petty_cash_routes(app):
     @app.route('/delete_petty_cash/<int:record_id>', methods=['POST'])
     @auth.login_required
     def delete_petty_cash(record_id):
-        if not auth.has_permission('petty_cash_reports'):
+        if not auth.has_permission('petty_cash_records.delete'):
             flash("شما به این بخش دسترسی ندارید.", "error")
             return redirect(url_for('petty_cash_reports'))
 
