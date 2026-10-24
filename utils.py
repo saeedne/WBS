@@ -405,14 +405,26 @@ def init_project_registry():
                 'INSERT OR IGNORE INTO projects (id, name, created_at) VALUES (1, ?, ?)',
                 ('طرقبه', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
             )
+        # Former account-level admins become regular ACL users. Give those
+        # existing accounts project assignments before removing the old bypass.
         conn.execute('''
             INSERT OR IGNORE INTO user_projects (username, project_id)
-            SELECT username, 1 FROM users WHERE role != 'admin'
+            SELECT u.username, p.id
+            FROM users u CROSS JOIN projects p
+            WHERE u.username != 'admin' AND u.role = 'admin'
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_projects existing WHERE existing.username = u.username
+              )
         ''')
         conn.execute('''
-            DELETE FROM user_projects
-            WHERE username IN (SELECT username FROM users WHERE role = 'admin')
+            INSERT OR IGNORE INTO user_projects (username, project_id)
+            SELECT username, 1 FROM users
+            WHERE username != 'admin'
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_projects existing WHERE existing.username = users.username
+              )
         ''')
+        conn.execute("DELETE FROM user_projects WHERE username = 'admin'")
         conn.commit()
     finally:
         conn.close()
@@ -536,6 +548,8 @@ def init_db(db_path=None, seed_users=True):
             unit_price REAL,
             discount TEXT,
             total_amount REAL,
+            paid_amount REAL NOT NULL DEFAULT 0,
+            remaining_amount REAL NOT NULL DEFAULT 0,
             location TEXT,
             notes TEXT,
             source TEXT,
@@ -725,6 +739,10 @@ def init_db(db_path=None, seed_users=True):
             cursor.execute("ALTER TABLE petty_cash ADD COLUMN personal_manager_payment INTEGER DEFAULT 0")
         if 'exclude_manager_calculation' not in petty_columns:
             cursor.execute("ALTER TABLE petty_cash ADD COLUMN exclude_manager_calculation INTEGER DEFAULT 0")
+        if 'paid_amount' not in petty_columns:
+            cursor.execute("ALTER TABLE petty_cash ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0")
+        if 'remaining_amount' not in petty_columns:
+            cursor.execute("ALTER TABLE petty_cash ADD COLUMN remaining_amount REAL NOT NULL DEFAULT 0")
     except sqlite3.OperationalError:
         pass
     
@@ -824,3 +842,4 @@ def shamsi_to_miladi(shamsi_date_str):
         return g_date
     except (ValueError, IndexError):
         raise ValueError("Invalid Shamsi date format")
+
