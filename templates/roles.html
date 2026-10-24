@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+
+{% block title %}مدیریت نقش‌ها و دسترسی‌ها{% endblock %}
+
+{% block content %}
+<header class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-800">مدیریت نقش‌ها و دسترسی‌ها</h1>
+        <p class="text-sm text-gray-600 mt-1">کاربر می‌تواند چند نقش داشته باشد و مجوزهای نقش‌هایش با هم جمع می‌شوند. نقش‌های منتقل‌شدهٔ قبلی هم در همین‌جا قابل ویرایش‌اند.</p>
+    </div>
+    {% if can_permission('users.view') %}<a href="{{ url_for('users') }}" class="text-blue-700 hover:underline">بازگشت به کاربران</a>{% elif can_permission('admin_dashboard.view') %}<a href="{{ url_for('admin_dashboard') }}" class="text-blue-700 hover:underline">بازگشت به پنل مدیریت</a>{% endif %}
+</header>
+
+{% macro permission_matrix(selected=[]) %}
+<div class="permission-matrix space-y-3">
+    <div class="flex flex-wrap items-center gap-2">
+        <input type="search" data-permission-search placeholder="جستجوی نام یا کد دسترسی..." class="w-full md:w-80 p-2 border rounded" aria-label="جستجوی مجوزها">
+        <button type="button" data-select-visible class="px-3 py-2 rounded border text-sm hover:bg-gray-50">انتخاب موارد دیده‌شده</button>
+        <button type="button" data-clear-visible class="px-3 py-2 rounded border text-sm hover:bg-gray-50">پاک‌کردن موارد دیده‌شده</button>
+        <span data-permission-count class="text-sm text-gray-600"></span>
+    </div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    {% for category, permissions in permission_groups %}
+    <fieldset class="permission-category border rounded-lg p-3">
+        <legend class="font-semibold px-1">{{ category }}</legend>
+        <div class="flex gap-2 mb-2">
+            <button type="button" data-category-select class="text-xs text-blue-700 hover:underline">انتخاب همه</button>
+            <button type="button" data-category-clear class="text-xs text-gray-600 hover:underline">پاک‌کردن</button>
+        </div>
+        <div class="space-y-2">
+            {% for code, label in permissions %}
+            <label class="permission-option flex items-start gap-2 text-sm" data-search="{{ (label ~ ' ' ~ code ~ ' ' ~ category)|lower }}">
+                <input type="checkbox" name="permissions" value="{{ code }}" {% if code in selected %}checked{% endif %}>
+                <span>{{ label }} <span class="text-xs text-gray-400">({{ code }})</span></span>
+            </label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    {% endfor %}
+</div>
+</div>
+{% endmacro %}
+
+<section class="bg-white rounded-xl shadow border p-4 mb-6">
+    <h2 class="text-lg font-bold mb-3">ساخت نقش</h2>
+    <form action="{{ url_for('create_role') }}" method="post" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input name="name" required maxlength="100" placeholder="نام نقش" class="w-full p-2 border rounded">
+            <input name="description" maxlength="250" placeholder="توضیح (اختیاری)" class="w-full p-2 border rounded">
+        </div>
+        {{ permission_matrix() }}
+        <button class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded">ساخت نقش</button>
+    </form>
+</section>
+
+<section class="space-y-5">
+    <input type="search" id="role-search" placeholder="جستجوی نقش با نام یا توضیح..." class="w-full md:w-96 p-2 border rounded" aria-label="جستجوی نقش‌ها">
+    {% for role in roles %}
+    <details class="role-entry bg-white rounded-xl shadow border" data-role-search="{{ (role.name ~ ' ' ~ role.description ~ ' ' ~ (role.assigned_user_names or ''))|lower }}" {% if loop.first %}open{% endif %}>
+        <summary class="cursor-pointer p-4 font-semibold flex flex-wrap justify-between gap-2">
+            <span>{{ role.name }}
+                {% if role.legacy_key and not role.legacy_key.startswith('system:') %}<span class="mr-2 text-xs font-normal text-amber-700 bg-amber-50 px-2 py-1 rounded">منتقل‌شده از دسترسی‌های قبلی</span>{% endif %}
+                {% if role.legacy_key and role.legacy_key.startswith('system:') %}<span class="mr-2 text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded">نقش پیش‌فرض سیستم</span>{% endif %}
+            </span>
+            <span class="text-sm text-gray-500">{{ role.assigned_user_count }} کاربر{% if role.assigned_user_names %} — {{ role.assigned_user_names }}{% endif %}</span>
+        </summary>
+        <form action="{{ url_for('edit_role', role_id=role.id) }}" method="post" class="border-t p-4 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input name="name" required maxlength="100" value="{{ role.name }}" class="w-full p-2 border rounded">
+                <input name="description" maxlength="250" value="{{ role.description }}" placeholder="توضیح (اختیاری)" class="w-full p-2 border rounded">
+            </div>
+            {{ permission_matrix(role_permissions.get(role.id, [])) }}
+            <div class="flex flex-wrap gap-3 justify-end">
+                <button class="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded">ذخیره تغییرات نقش</button>
+                {% if role.assigned_user_count == 0 %}
+                <button type="submit" formaction="{{ url_for('delete_role', role_id=role.id) }}" formmethod="post"
+                        formnovalidate class="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded"
+                        onclick="return confirm('این نقش حذف شود؟')">حذف نقش</button>
+                {% else %}
+                <span class="text-sm text-gray-500 self-center">برای حذف، ابتدا این نقش را از کاربران بردارید.</span>
+                {% endif %}
+            </div>
+        </form>
+    </details>
+    {% else %}
+    <div class="bg-gray-50 rounded-lg p-4 text-gray-600">هنوز نقشی ساخته نشده است.</div>
+    {% endfor %}
+</section>
+<script>
+const roleSearch = document.getElementById('role-search');
+if (roleSearch) {
+    roleSearch.addEventListener('input', () => {
+        const query = roleSearch.value.trim().toLocaleLowerCase();
+        document.querySelectorAll('.role-entry').forEach((entry) => {
+            entry.style.display = entry.dataset.roleSearch.includes(query) ? '' : 'none';
+        });
+    });
+}
+document.querySelectorAll('.permission-matrix').forEach((matrix) => {
+    const search = matrix.querySelector('[data-permission-search]');
+    const counter = matrix.querySelector('[data-permission-count]');
+    const options = [...matrix.querySelectorAll('.permission-option')];
+    const updateCount = () => {
+        const checked = matrix.querySelectorAll('input[name="permissions"]:checked').length;
+        counter.textContent = `${checked} مجوز انتخاب شده`;
+    };
+    const setVisible = (checked) => {
+        options.filter((option) => option.style.display !== 'none')
+            .forEach((option) => { option.querySelector('input').checked = checked; });
+        updateCount();
+    };
+    search.addEventListener('input', () => {
+        const query = search.value.trim().toLocaleLowerCase();
+        options.forEach((option) => {
+            option.style.display = option.dataset.search.includes(query) ? '' : 'none';
+        });
+    });
+    matrix.addEventListener('change', (event) => {
+        if (event.target.matches('input[name="permissions"]')) updateCount();
+    });
+    matrix.querySelector('[data-select-visible]').addEventListener('click', () => setVisible(true));
+    matrix.querySelector('[data-clear-visible]').addEventListener('click', () => setVisible(false));
+    matrix.querySelectorAll('.permission-category').forEach((category) => {
+        category.querySelector('[data-category-select]').addEventListener('click', () => {
+            category.querySelectorAll('input[name="permissions"]').forEach((input) => { input.checked = true; });
+            updateCount();
+        });
+        category.querySelector('[data-category-clear]').addEventListener('click', () => {
+            category.querySelectorAll('input[name="permissions"]').forEach((input) => { input.checked = false; });
+            updateCount();
+        });
+    });
+    updateCount();
+});
+</script>
+{% endblock %}
+
