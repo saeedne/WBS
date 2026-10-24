@@ -14,9 +14,11 @@
 <header class="text-center mb-6">
     <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">مدیریت کاربران و پروژه‌ها</h1>
     <p class="text-gray-500 text-sm">افزودن، ویرایش و حذف کاربران و پروژه‌ها</p>
+    {% if can_manage_roles %}<a href="{{ url_for('roles') }}" class="inline-block mt-3 text-purple-700 hover:underline">مدیریت نقش‌ها و دسترسی‌ها</a>{% endif %}
 </header>
 
 <section>
+    {% if can_create_project or can_edit_project or can_export_projects or can_delete_project %}
     {% if can_create_project %}
     <div class="bg-indigo-50 p-4 rounded-lg shadow-inner border border-indigo-100 mb-6">
         <h2 class="text-xl font-bold text-gray-800 mb-3">ساخت پروژهٔ جدید</h2>
@@ -35,6 +37,7 @@
             <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-lg">ساخت پروژه</button>
         </form>
     </div>
+    {% endif %}
 
     <div class="bg-white rounded-xl overflow-hidden shadow-xl border border-gray-200 mb-6">
         <h2 class="text-xl font-bold p-4">پروژه‌ها</h2>
@@ -53,19 +56,23 @@
                         <td class="px-4 py-3">{{ project.estimate_amount if project.estimate_amount is not none else '—' }}</td>
                         <td class="px-4 py-3">{{ 'در حال خروجی و حذف' if project.deletion_token else 'فعال' }}</td>
                         <td class="px-4 py-3 flex flex-wrap gap-3">
-                            {% if project.deletion_token %}
+                            {% if project.deletion_token and can_delete_project %}
                             <form action="{{ url_for('cancel_project_export_route', project_id=project.id) }}" method="post" onsubmit="return confirm('فرایند حذف لغو شود و اطلاعات پروژه باقی بماند؟');">
                                 <button type="submit" class="text-amber-800 hover:underline">لغو فرایند</button>
                             </form>
-                            {% else %}
+                            {% elif not project.deletion_token %}
+                            {% if can_edit_project %}
                             <button type="button" class="edit-project-button text-indigo-700 hover:underline"
                                     data-id="{{ project.id }}" data-name="{{ project.name }}"
                                     data-employer="{{ project.employer_name or '' }}" data-start="{{ project.start_date_jalali or '' }}"
                                     data-duration="{{ project.contract_duration_months if project.contract_duration_months is not none else '' }}" data-estimate="{{ project.estimate_amount if project.estimate_amount is not none else '' }}">ویرایش</button>
+                            {% endif %}
+                            {% if can_export_projects and can_delete_project %}
                             <form action="{{ url_for('begin_project_export', project_id=project.id) }}" method="post"
                                   onsubmit="return confirm('ابتدا خروجی اکسل و ZIP این پروژه ساخته می‌شود. پس از دریافت هر دو فایل می‌توانید حذف قطعی را تأیید کنید. ادامه می‌دهید؟');">
                                 <button type="submit" class="text-red-700 hover:underline">خروجی و حذف پروژه</button>
                             </form>
+                            {% endif %}
                             {% endif %}
                         </td>
                     </tr>
@@ -79,30 +86,38 @@
     {% endif %}
 
     {% if projects %}
+    {% if can_permission('users.create') %}
     <div class="bg-gray-50 p-4 rounded-lg shadow-inner mb-6">
         <h2 class="text-xl font-bold text-gray-800 mb-3">افزودن کاربر جدید</h2>
-        <p class="text-sm text-gray-600 mb-3">برای هر کاربر عادی یک یا چند پروژه را انتخاب کنید؛ حساب مدیر می‌تواند به همهٔ پروژه‌ها دسترسی داشته باشد.</p>
+        <p class="text-sm text-gray-600 mb-3">برای هر کاربر پروژه و نقش‌های دسترسی را انتخاب کنید. فقط حساب admin دسترسی سراسری دارد.</p>
         <form action="/add_user" method="post" class="space-y-3">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <input type="text" name="username" placeholder="نام کاربری" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
                 <input type="text" name="name" placeholder="نام" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
                 <input type="password" name="password" placeholder="رمز عبور" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
-                <select name="role" required class="w-full p-2 rounded-md border border-gray-300 text-sm">
-                    <option value="user">کاربر عادی</option>
-                    <option value="admin">مدیر</option>
-                </select>
             </div>
             <div class="rounded border p-3">
-                <p class="text-sm font-semibold mb-2">پروژه‌های کاربر عادی</p>
+                <p class="text-sm font-semibold mb-2">پروژه‌های کاربر</p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {% for project in project_choices %}
                     <label class="flex gap-2 items-center text-sm"><input type="checkbox" name="project_ids" value="{{ project.id }}" {% if project.id == session.get('active_project_id') %}checked{% endif %}><span>{{ project.name }}</span></label>
                     {% endfor %}
                 </div>
             </div>
+            {% if can_assign_roles %}
+            <div class="rounded border p-3">
+                <p class="text-sm font-semibold mb-2">نقش‌های دسترسی (امکان انتخاب چند نقش)</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {% for role_item in available_roles %}
+                    <label class="flex gap-2 items-center text-sm"><input type="checkbox" name="role_ids" value="{{ role_item.id }}"><span>{{ role_item.name }}</span></label>
+                    {% else %}<span class="text-sm text-gray-500">هنوز نقشی ساخته نشده است.</span>{% endfor %}
+                </div>
+            </div>
+            {% endif %}
             <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 text-sm">افزودن کاربر</button>
         </form>
     </div>
+    {% endif %}
 
     <div class="bg-white rounded-xl overflow-hidden shadow-2xl border border-gray-200">
         <div class="overflow-x-auto">
@@ -110,8 +125,7 @@
                 <thead class="bg-gray-50"><tr>
                     <th class="px-6 py-3 text-right text-sm text-gray-500">نام</th>
                     <th class="px-6 py-3 text-right text-sm text-gray-500">نام کاربری</th>
-                    <th class="px-6 py-3 text-right text-sm text-gray-500">نقش</th>
-                    <th class="px-6 py-3 text-right text-sm text-gray-500">دسترسی‌ها</th>
+                    <th class="px-6 py-3 text-right text-sm text-gray-500">نقش‌های دسترسی</th>
                     <th class="px-6 py-3 text-right text-sm text-gray-500">عملیات</th>
                 </tr></thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -120,20 +134,18 @@
                     <tr class="hover:bg-gray-100" data-username="{{ user.username }}">
                         <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ user.name }}</td>
                         <td class="px-6 py-4 text-sm text-gray-500">{{ user.username }}</td>
-                        <td class="px-6 py-4 text-sm">{{ 'مدیر' if user.role == 'admin' else 'کاربر عادی' }}</td>
-                        <td class="px-6 py-4 text-sm">
-                            {% if user.username != 'admin' or session['user']['username'] == 'admin' %}
-                            <button onclick="showPermissionsModal('{{ user.username }}')" class="text-purple-600 hover:text-purple-900">دسترسی‌ها</button>
-                            {% endif %}
-                        </td>
+                        <td class="px-6 py-4 text-sm">{% if user.username == 'admin' %}مدیر سیستم — همهٔ دسترسی‌ها{% else %}{{ user.acl_role_names|join('، ') if user.acl_role_names else 'بدون نقش' }}{% endif %}</td>
                         <td class="px-6 py-4 text-sm flex gap-3">
+                            {% if can_permission('users.logs.view') %}
                             <button onclick="showUserLogModal('{{ user.username }}')" class="text-blue-600 hover:text-blue-900">گزارش</button>
-                            {% if user.username != 'admin' or session['user']['username'] == 'admin' %}
-                            <button type="button" class="edit-user-button text-indigo-600 hover:text-indigo-900"
-                                    data-username="{{ user.username }}" data-name="{{ user.name }}" data-role="{{ user.role }}"
-                                    data-project-ids="{{ user.project_ids|join(',') }}">ویرایش</button>
                             {% endif %}
-                            {% if user.username != 'admin' %}
+                            {% if user.username != 'admin' and can_permission('users.edit') %}
+                            <button type="button" class="edit-user-button text-indigo-600 hover:text-indigo-900"
+                                    data-username="{{ user.username }}" data-name="{{ user.name }}"
+                                    data-project-ids="{{ user.project_ids|join(',') }}"
+                                    data-role-ids="{{ user.role_ids|join(',') }}">ویرایش</button>
+                            {% endif %}
+                            {% if user.username != 'admin' and can_permission('users.delete') %}
                             <form action="/delete_user" method="post" onsubmit="return confirm('آیا از حذف کاربر {{ user.name }} مطمئن هستید؟');">
                                 <input type="hidden" name="username" value="{{ user.username }}">
                                 <button type="submit" class="text-red-600 hover:text-red-900">حذف</button>
@@ -152,7 +164,7 @@
     {% endif %}
 </section>
 
-{% if can_create_project %}
+{% if can_edit_project %}
 <div id="editProjectModal" class="modal"><div class="modal-content">
     <span class="close-button" onclick="closeModal('editProjectModal')">&times;</span>
     <h2 class="text-xl font-bold mb-4">ویرایش مشخصات پروژه</h2>
@@ -180,32 +192,25 @@
         <input type="text" id="display_username" disabled class="w-full p-2 border rounded bg-gray-100">
         <input type="text" id="edit_name" name="name" required class="w-full p-2 border rounded" placeholder="نام">
         <input type="password" id="edit_password" name="password" class="w-full p-2 border rounded" placeholder="رمز عبور جدید (اختیاری)">
-        <select id="edit_role" name="role" class="w-full p-2 border rounded"><option value="user">کاربر عادی</option><option value="admin">مدیر</option></select>
         <div id="edit-project-assignment" class="rounded border p-3">
-            <p class="text-sm font-semibold mb-2">پروژه‌های کاربر عادی</p>
+            <p class="text-sm font-semibold mb-2">پروژه‌های کاربر</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {% for project in project_choices %}
                 <label class="flex gap-2 items-center text-sm"><input type="checkbox" name="project_ids" value="{{ project.id }}"><span>{{ project.name }}</span></label>
                 {% endfor %}
             </div>
         </div>
-        <div class="flex justify-end gap-3"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('editModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
-    </form>
-</div></div>
-
-<div id="permissionsModal" class="modal"><div class="modal-content">
-    <span class="close-button" onclick="closeModal('permissionsModal')">&times;</span>
-    <h2 class="text-xl font-bold mb-2">تنظیم دسترسی‌ها</h2>
-    <div id="permissions-user-info" class="text-sm font-semibold mb-4"></div>
-    <form id="permissions-form" action="/update_permissions" method="post">
-        <input type="hidden" name="username" id="permissions_username">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {% set permissions = [('index','ثبت تردد'),('management','مدیریت کارکنان'),('reports','گزارش ترددها'),('users','مدیریت کاربران'),('petty_cash','ثبت هزینه'),('petty_cash_reports','گزارش هزینه'),('daily_worker','ثبت روزمزد'),('daily_worker_reports','گزارش روزمزد'),('financial_records','ثبت مالی'),('financial_reports','گزارش مالی'),('dashboard','داشبورد'),('admin_dashboard','پنل مدیریت'),('facilities','ثبت تأسیسات'),('facilities_reports','گزارش تأسیسات'),('payroll_calculation','محاسبه حقوق'),('project_wbs','ساختار شکست پروژه'),('project_progress','پیشرفت فیزیکی پروژه')] %}
-            {% for key, label in permissions %}
-            <label class="flex gap-2 items-center"><input type="checkbox" name="{{ key }}"><span>{{ label }}</span></label>
-            {% endfor %}
+        {% if can_assign_roles %}
+        <div class="rounded border p-3">
+            <p class="text-sm font-semibold mb-2">نقش‌های دسترسی (امکان انتخاب چند نقش)</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {% for role_item in available_roles %}
+                <label class="flex gap-2 items-center text-sm"><input type="checkbox" name="role_ids" value="{{ role_item.id }}"><span>{{ role_item.name }}</span></label>
+                {% else %}<span class="text-sm text-gray-500">هنوز نقشی ساخته نشده است.</span>{% endfor %}
+            </div>
         </div>
-        <div class="flex justify-end gap-3 mt-4"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('permissionsModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
+        {% endif %}
+        <div class="flex justify-end gap-3"><button class="bg-green-600 text-white py-2 px-4 rounded">ذخیره</button><button type="button" onclick="closeModal('editModal')" class="bg-gray-400 text-white py-2 px-4 rounded">انصراف</button></div>
     </form>
 </div></div>
 
@@ -308,42 +313,28 @@ document.querySelectorAll('.edit-project-button').forEach(button => {
         showModal('editProjectModal');
     });
 });
-function showEditModal(username, name, role, projectIds) {
+function showEditModal(username, name, projectIds, roleIds) {
     document.getElementById('edit_username').value = username;
     document.getElementById('display_username').value = username;
     document.getElementById('edit_name').value = name;
-    document.getElementById('edit_role').value = role;
     document.getElementById('edit_password').value = '';
     const projectSet = new Set(projectIds);
     document.querySelectorAll('#edit-project-assignment input[name="project_ids"]').forEach(box => {
         box.checked = projectSet.has(box.value);
     });
-    document.getElementById('edit-project-assignment').classList.toggle('hidden', role === 'admin');
+    const roleSet = new Set(roleIds.map(String));
+    document.querySelectorAll('#editModal input[name="role_ids"]').forEach(box => {
+        box.checked = roleSet.has(box.value);
+    });
     showModal('editModal');
 }
 document.querySelectorAll('.edit-user-button').forEach(button => {
     button.addEventListener('click', () => showEditModal(
-        button.dataset.username, button.dataset.name, button.dataset.role,
-        (button.dataset.projectIds || '').split(',').filter(Boolean)
+        button.dataset.username, button.dataset.name,
+        (button.dataset.projectIds || '').split(',').filter(Boolean),
+        (button.dataset.roleIds || '').split(',').filter(Boolean)
     ));
 });
-document.getElementById('edit_role').addEventListener('change', event => {
-    document.getElementById('edit-project-assignment').classList.toggle('hidden', event.target.value === 'admin');
-});
-async function showPermissionsModal(username) {
-    const form = document.getElementById('permissions-form');
-    document.getElementById('permissions_username').value = username;
-    document.getElementById('permissions-user-info').textContent = `تنظیم دسترسی‌ها برای: ${username}`;
-    form.querySelectorAll('input[type="checkbox"]').forEach(box => box.checked = false);
-    const response = await fetch(`/get_permissions/${encodeURIComponent(username)}`);
-    if (!response.ok) { alert('امکان دریافت دسترسی‌ها وجود ندارد.'); return; }
-    const data = await response.json();
-    Object.entries(data.permissions || {}).forEach(([name, enabled]) => {
-        const box = form.querySelector(`input[name="${name}"]`);
-        if (box) box.checked = Boolean(enabled);
-    });
-    showModal('permissionsModal');
-}
 async function showUserLogModal(username) {
     const content = document.getElementById('user-log-content');
     content.textContent = 'در حال بارگذاری…';
@@ -357,3 +348,4 @@ async function showUserLogModal(username) {
 window.addEventListener('click', event => document.querySelectorAll('.modal').forEach(modal => { if (event.target === modal) closeModal(modal.id); }));
 </script>
 {% endblock %}
+
