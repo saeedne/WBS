@@ -17,7 +17,7 @@
     <p class="text-gray-500 text-sm">لطفاً اطلاعات مربوط به هزینه را وارد کنید.</p>
 </header>
 
-<form id="petty_cash_form" action="/add_petty_cash" method="post" enctype="multipart/form-data" class="space-y-4">
+<form id="petty_cash_form" {% if not can_permission('petty_cash.create') %}hidden{% endif %} action="/add_petty_cash" method="post" enctype="multipart/form-data" class="space-y-4">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
         <div>
@@ -53,6 +53,13 @@
             <label for="unit_price" class="block text-sm font-medium text-gray-700">فی (ریال):</label>
             <input type="number" id="unit_price" name="unit_price" step="any" required
                    class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+            <p class="mt-1 text-xs text-gray-500">برای ثبت واریزی یا اعتبار، فی را منفی وارد کنید؛ مبلغ کل و مانده با علامت منفی محاسبه می‌شوند.</p>
+        </div>
+
+        <div>
+            <label for="paid_amount" class="block text-sm font-medium text-gray-700">مبلغ پرداختی (ریال):</label>
+            <input type="number" id="paid_amount" name="paid_amount" min="0" step="1" value="0" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
         </div>
 
         <div>
@@ -67,6 +74,12 @@
             <input type="text" id="total_amount" name="total_amount"
                    class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-gray-100"
                    readonly>
+        </div>
+
+        <div>
+            <label for="remaining_amount" class="block text-sm font-medium text-gray-700">مبلغ مانده (ریال):</label>
+            <input type="number" id="remaining_amount" name="remaining_amount" step="1" value="0" required
+                   class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
         </div>
 
         <div>
@@ -103,6 +116,7 @@
                     class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                 <option value="تسویه شده">تسویه شده</option>
                 <option value="تسویه نشده">تسویه نشده</option>
+                <option value="مانده دارد" disabled>مانده دارد</option>
             </select>
         </div>
 
@@ -198,6 +212,8 @@
     }
 
 
+    let paidAmountFollowsTotal = true;
+
     // تابع محاسبه و بروزرسانی مبلغ کل
     function calculateTotalAmount() {
         const amountInput = $('#amount');
@@ -218,9 +234,7 @@
                         removeNumberFormatting(discountValue).replace('%', '')
                     ) || 0;
 
-                totalAmount =
-                    totalAmount -
-                    (totalAmount * (discountPercent / 100));
+                totalAmount = totalAmount - (totalAmount * (discountPercent / 100));
 
             } else {
                 const discountFixed =
@@ -231,6 +245,31 @@
         }
 
         totalAmountInput.val(formatNumber(totalAmount));
+        updateRemainingAmount();
+    }
+
+    function syncSettlementStatus(balanceInput, statusSelect) {
+        const remaining = parseFloat(balanceInput.value) || 0;
+        const hasBalance = remaining > 0;
+        [...statusSelect.options].forEach(option => {
+            if (option.value === 'مانده دارد') option.disabled = !hasBalance;
+            else option.disabled = hasBalance;
+        });
+        if (hasBalance) statusSelect.value = 'مانده دارد';
+        else if (remaining < 0) statusSelect.value = 'تسویه شده';
+        else if (statusSelect.value === 'مانده دارد') statusSelect.value = 'تسویه شده';
+    }
+
+    function updateRemainingAmount() {
+        const total = parseFloat(removeNumberFormatting($('#total_amount').val())) || 0;
+        if (paidAmountFollowsTotal) {
+            // Credits/deposits reduce the net amount; they are not negative payments.
+            $('#paid_amount').val(Math.max(0, Math.round(total)));
+        }
+        const paid = parseFloat($('#paid_amount').val()) || 0;
+        const remaining = total - paid;
+        $('#remaining_amount').val(Math.round(remaining));
+        syncSettlementStatus(document.getElementById('remaining_amount'), document.getElementById('settlement_status'));
     }
 
 
@@ -255,6 +294,13 @@
         amountInput.on('input', calculateTotalAmount);
         unitPriceInput.on('input', calculateTotalAmount);
         discountInput.on('input', calculateTotalAmount);
+        $('#paid_amount').on('input', function() {
+            paidAmountFollowsTotal = false;
+            updateRemainingAmount();
+        });
+        $('#remaining_amount').on('input', function() {
+            syncSettlementStatus(this, document.getElementById('settlement_status'));
+        });
 
 
         // Make total_amount editable on double click
@@ -278,6 +324,7 @@
 
             $(this).val(formattedValue);
             $(this).prop('readonly', true);
+            updateRemainingAmount();
             $(this).addClass('bg-gray-100');
         });
 
