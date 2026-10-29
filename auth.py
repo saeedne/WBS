@@ -1040,13 +1040,18 @@ def init_auth_system(app):
         try:
             duration_text = request.form.get('contract_duration_months', '').strip()
             amount_text = request.form.get('estimate_amount', '').strip()
+            manager_percentage_text = request.form.get('manager_percentage', '10').strip()
             duration = int(duration_text) if duration_text else None
             estimate = float(amount_text) if amount_text else None
+            manager_percentage = float(manager_percentage_text or '10')
             if duration is not None and duration < 0 or estimate is not None and estimate < 0:
                 raise ValueError('مدت قرارداد و مبلغ برآورد نمی‌توانند منفی باشند.')
+            if not 0 <= manager_percentage <= 100:
+                raise ValueError('درصد مدیر باید بین ۰ تا ۱۰۰ باشد.')
             project_id = utils.create_project(
                 request.form.get('name'), request.form.get('employer_name'),
-                _project_date_to_storage(request.form.get('start_date')), duration, estimate
+                _project_date_to_storage(request.form.get('start_date')), duration, estimate,
+                manager_percentage
             )
             if session.get('user', {}).get('username') != 'admin':
                 conn = utils.get_auth_db_connection()
@@ -1082,13 +1087,18 @@ def init_auth_system(app):
                 return redirect(url_for('users'))
             duration_text = request.form.get('contract_duration_months', '').strip()
             amount_text = request.form.get('estimate_amount', '').strip()
+            manager_percentage_text = request.form.get('manager_percentage', '10').strip()
             duration = int(duration_text) if duration_text else None
             estimate = float(amount_text) if amount_text else None
+            manager_percentage = float(manager_percentage_text or '10')
             if duration is not None and duration < 0 or estimate is not None and estimate < 0:
                 raise ValueError('مدت قرارداد و مبلغ برآورد نمی‌توانند منفی باشند.')
+            if not 0 <= manager_percentage <= 100:
+                raise ValueError('درصد مدیر باید بین ۰ تا ۱۰۰ باشد.')
             utils.update_project(
                 project_id, request.form.get('name'), request.form.get('employer_name'),
-                _project_date_to_storage(request.form.get('start_date')), duration, estimate
+                _project_date_to_storage(request.form.get('start_date')), duration, estimate,
+                manager_percentage
             )
             if session.get('active_project_id') == project_id:
                 session['active_project_name'] = utils.get_project_name(project_id)
@@ -1594,4 +1604,3 @@ def init_auth_system(app):
     @login_required
     def update_permissions():
         abort(410, description='تغییر دسترسی کاربران از طریق نقش‌ها انجام می‌شود.')
-
