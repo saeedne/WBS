@@ -28,6 +28,7 @@
                 <input name="employer_name" maxlength="150" placeholder="نام کارفرما" class="w-full p-2 border rounded">
                 <label class="text-sm">تاریخ شروع بکار (شمسی)<input name="start_date" id="project_start_date" type="text" autocomplete="off" placeholder="۱۴۰۵/۰۱/۰۱" class="w-full p-2 border rounded"></label>
                 <label class="text-sm">مدت قرارداد (ماه)<input name="contract_duration_months" type="number" min="0" step="1" class="w-full p-2 border rounded"></label>
+                <label class="text-sm">درصد سهم مدیر<input name="manager_percentage" type="number" min="0" max="100" step="0.01" value="10" required class="w-full p-2 border rounded"></label>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
                     <label class="text-sm">مبلغ برآورد(ريال)<input id="create_estimate_display" type="text" inputmode="decimal" autocomplete="off" class="estimate-display w-full p-2 border rounded"></label>
                     <label class="text-sm">مبلغ به حروف (ريال)<input id="create_estimate_words" type="text" readonly class="estimate-words w-full p-2 border rounded bg-gray-100"></label>
@@ -46,7 +47,7 @@
                 <thead class="bg-gray-50"><tr>
                     <th class="px-4 py-3 text-right">نام پروژه</th><th class="px-4 py-3 text-right">کارفرما</th>
                     <th class="px-4 py-3 text-right">شروع بکار</th><th class="px-4 py-3 text-right">مدت (ماه)</th>
-                    <th class="px-4 py-3 text-right">مبلغ برآورد</th><th class="px-4 py-3 text-right">وضعیت</th><th class="px-4 py-3 text-right">عملیات</th>
+                    <th class="px-4 py-3 text-right">مبلغ برآورد</th><th class="px-4 py-3 text-right">سهم مدیر</th><th class="px-4 py-3 text-right">وضعیت</th><th class="px-4 py-3 text-right">عملیات</th>
                 </tr></thead>
                 <tbody class="divide-y">
                     {% for project in projects %}
@@ -54,6 +55,7 @@
                         <td class="px-4 py-3">{{ project.name }}</td><td class="px-4 py-3">{{ project.employer_name or '—' }}</td>
                         <td class="px-4 py-3">{{ project.start_date_jalali or '—' }}</td><td class="px-4 py-3">{{ project.contract_duration_months if project.contract_duration_months is not none else '—' }}</td>
                         <td class="px-4 py-3">{{ project.estimate_amount if project.estimate_amount is not none else '—' }}</td>
+                        <td class="px-4 py-3">{{ project.manager_percentage if project.manager_percentage is not none else 10 }}٪</td>
                         <td class="px-4 py-3">{{ 'در حال خروجی و حذف' if project.deletion_token else 'فعال' }}</td>
                         <td class="px-4 py-3 flex flex-wrap gap-3">
                             {% if project.deletion_token and can_delete_project %}
@@ -65,7 +67,7 @@
                             <button type="button" class="edit-project-button text-indigo-700 hover:underline"
                                     data-id="{{ project.id }}" data-name="{{ project.name }}"
                                     data-employer="{{ project.employer_name or '' }}" data-start="{{ project.start_date_jalali or '' }}"
-                                    data-duration="{{ project.contract_duration_months if project.contract_duration_months is not none else '' }}" data-estimate="{{ project.estimate_amount if project.estimate_amount is not none else '' }}">ویرایش</button>
+                                    data-duration="{{ project.contract_duration_months if project.contract_duration_months is not none else '' }}" data-estimate="{{ project.estimate_amount if project.estimate_amount is not none else '' }}" data-manager-percentage="{{ project.manager_percentage if project.manager_percentage is not none else 10 }}">ویرایش</button>
                             {% endif %}
                             {% if can_export_projects and can_delete_project %}
                             <form action="{{ url_for('begin_project_export', project_id=project.id) }}" method="post"
@@ -174,6 +176,7 @@
         <input name="employer_name" id="edit_project_employer" maxlength="150" placeholder="نام کارفرما" class="w-full p-2 border rounded">
         <label class="block text-sm">تاریخ شروع بکار (شمسی)<input name="start_date" id="edit_project_start" type="text" autocomplete="off" placeholder="۱۴۰۵/۰۱/۰۱" class="w-full p-2 border rounded"></label>
         <label class="block text-sm">مدت قرارداد (ماه)<input name="contract_duration_months" id="edit_project_duration" type="number" min="0" step="1" class="w-full p-2 border rounded"></label>
+        <label class="block text-sm">درصد سهم مدیر<input name="manager_percentage" id="edit_project_manager_percentage" type="number" min="0" max="100" step="0.01" required class="w-full p-2 border rounded"></label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label class="block text-sm">مبلغ برآورد<input id="edit_estimate_display" type="text" inputmode="decimal" autocomplete="off" class="estimate-display w-full p-2 border rounded"></label>
             <label class="block text-sm">مبلغ به حروف<input id="edit_estimate_words" type="text" readonly class="estimate-words w-full p-2 border rounded bg-gray-100"></label>
@@ -307,6 +310,7 @@ document.querySelectorAll('.edit-project-button').forEach(button => {
         document.getElementById('edit_project_employer').value = button.dataset.employer;
         document.getElementById('edit_project_start').value = button.dataset.start;
         document.getElementById('edit_project_duration').value = button.dataset.duration;
+        document.getElementById('edit_project_manager_percentage').value = button.dataset.managerPercentage || '10';
         const estimateDisplay = document.getElementById('edit_estimate_display');
         estimateDisplay.value = button.dataset.estimate;
         estimateDisplay.dispatchEvent(new Event('input'));
@@ -348,4 +352,3 @@ async function showUserLogModal(username) {
 window.addEventListener('click', event => document.querySelectorAll('.modal').forEach(modal => { if (event.target === modal) closeModal(modal.id); }));
 </script>
 {% endblock %}
-
