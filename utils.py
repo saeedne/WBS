@@ -748,24 +748,23 @@ def init_db(db_path=None, seed_users=True):
     except sqlite3.OperationalError:
         pass
 
-    # WBS fields for existing petty_cash tables
-    try:
-        cursor.execute("PRAGMA table_info(petty_cash)")
-        petty_columns = [col[1] for col in cursor.fetchall()]
-        if 'wbs_code' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN wbs_code TEXT")
-        if 'wbs_coverage_percent' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN wbs_coverage_percent REAL DEFAULT 0")
-        if 'personal_manager_payment' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN personal_manager_payment INTEGER DEFAULT 0")
-        if 'exclude_manager_calculation' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN exclude_manager_calculation INTEGER DEFAULT 0")
-        if 'paid_amount' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0")
-        if 'remaining_amount' not in petty_columns:
-            cursor.execute("ALTER TABLE petty_cash ADD COLUMN remaining_amount REAL NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    # Migrate each legacy petty_cash column independently. A failure in one
+    # older migration must not silently prevent later columns from being added.
+    petty_migrations = (
+        ('wbs_code', 'TEXT'),
+        ('wbs_coverage_percent', 'REAL DEFAULT 0'),
+        ('personal_manager_payment', 'INTEGER DEFAULT 0'),
+        ('exclude_manager_calculation', 'INTEGER DEFAULT 0'),
+        ('paid_amount', 'REAL NOT NULL DEFAULT 0'),
+        ('remaining_amount', 'REAL NOT NULL DEFAULT 0'),
+    )
+    petty_columns = {row[1] for row in cursor.execute('PRAGMA table_info(petty_cash)').fetchall()}
+    for column_name, column_definition in petty_migrations:
+        if column_name not in petty_columns:
+            cursor.execute(
+                f'ALTER TABLE petty_cash ADD COLUMN {column_name} {column_definition}'
+            )
+            petty_columns.add(column_name)
     
     conn.commit()
     conn.close()
@@ -838,6 +837,22 @@ def init_db(db_path=None, seed_users=True):
         print(f"Error during initial setup or permission update: {e}")
     finally:
         conn.close()
+
+
+def init_registered_project_databases():
+    """Apply schema migrations to existing databases for every registered project."""
+    conn = get_auth_db_connection()
+    try:
+        project_ids = [row['id'] for row in conn.execute('SELECT id FROM projects').fetchall()]
+    finally:
+        conn.close()
+
+    for project_id in project_ids:
+        db_path = get_project_db_path(project_id)
+        # Avoid creating an empty database when a registered project's file is missing.
+        if project_id != 1 and not os.path.isfile(db_path):
+            continue
+        init_db(db_path=db_path, seed_users=False)
 
 def log_action(username, action, details=""):
     """Logs user actions to the user_logs table."""
