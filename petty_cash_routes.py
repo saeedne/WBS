@@ -68,7 +68,7 @@ def _read_petty_cash_payment_fields(form, total_amount):
     return paid_amount, remaining_amount, settlement_status
 
 
-def _manager_share(record):
+def _manager_share(record, manager_percentage=10):
     """Calculate manager share according to petty-cash business rules."""
     amount = _to_number(record['total_amount'])
     if record['settlement_status'] not in ('تسویه شده', 'مانده دارد'):
@@ -80,7 +80,7 @@ def _manager_share(record):
     if excluded:
         return amount if personal else 0.0
 
-    return (amount * 0.10) + (amount if personal else 0.0)
+    return (amount * (float(manager_percentage) / 100.0)) + (amount if personal else 0.0)
 
 
 def _paid_manager_share(record):
@@ -125,7 +125,7 @@ def _receipt_file_for_cleanup(receipt_url, project_id):
     return file_path
 
 
-def _report_totals(records):
+def _report_totals(records, manager_percentage=10):
     total_amount = 0.0
     remaining_amount = 0.0
     personal_amount = 0.0
@@ -140,7 +140,7 @@ def _report_totals(records):
             personal_amount += amount
         if _to_bool(record['exclude_manager_calculation']):
             excluded_amount += amount
-        manager_share += _manager_share(record)
+        manager_share += _manager_share(record, manager_percentage)
 
     return {
         'total_amount': total_amount,
@@ -323,6 +323,7 @@ def init_petty_cash_routes(app):
             flash("شما به این بخش دسترسی ندارید.", "error")
             return redirect(url_for('admin_dashboard'))
 
+        manager_percentage = utils.get_project_manager_percentage()
         conn = utils.get_db_connection()
 
         today = datetime.now().date()
@@ -472,10 +473,12 @@ def init_petty_cash_routes(app):
 
             display_records.append(display_record)
 
-        totals = _report_totals(records)
+        totals = _report_totals(records, manager_percentage)
         manager_overview = None
         if show_manager_summary:
-            lifetime_manager_share = sum(_manager_share(record) for record in all_records)
+            lifetime_manager_share = sum(
+                _manager_share(record, manager_percentage) for record in all_records
+            )
             paid_manager_share = sum(_paid_manager_share(record) for record in all_records)
             manager_overview = {
                 'lifetime_share': lifetime_manager_share,
@@ -498,7 +501,8 @@ def init_petty_cash_routes(app):
                                selected_personal_manager_payment=personal_manager_payment_filter,
                                selected_exclude_manager_calculation=exclude_manager_calculation_filter,
                                report_totals=totals,
-                               manager_overview=manager_overview)
+                               manager_overview=manager_overview,
+                               manager_percentage=manager_percentage)
 
     @app.route('/export/petty_cash_reports')
     @auth.login_required
@@ -506,6 +510,7 @@ def init_petty_cash_routes(app):
         if not auth.has_permission('petty_cash_reports.export'):
             return "Access Denied", 403
         
+        manager_percentage = utils.get_project_manager_percentage()
         start_date_fa = request.args.get('start_date')
         end_date_fa = request.args.get('end_date')
         payer_filter = request.args.get('payer_filter')
@@ -603,7 +608,7 @@ def init_petty_cash_routes(app):
         for col_num, header in enumerate(headers):
             worksheet.write(0, col_num, header, header_format)
             
-        report_totals = _report_totals(records)
+        report_totals = _report_totals(records, manager_percentage)
         row_num = 1
         for record in records:
             amount = _to_int_number(record['total_amount'])
@@ -790,4 +795,3 @@ def init_petty_cash_routes(app):
         finally:
             conn.close()
         return redirect(url_for('petty_cash_reports'))
-
