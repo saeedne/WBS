@@ -53,14 +53,18 @@ def _read_petty_cash_payment_fields(form, total_amount):
         _to_int_number(total_amount if paid_raw in (None, '') else paid_raw)
     )
     remaining_raw = form.get('remaining_amount')
+    # A negative balance represents a credit/deposit and must remain signed.
     remaining_amount = (
-        max(0, _to_int_number(remaining_raw))
+        _to_int_number(remaining_raw)
         if remaining_raw not in (None, '')
-        else max(0, _to_int_number(total_amount) - paid_amount)
+        else _to_int_number(total_amount) - paid_amount
     )
     settlement_status = form.get('settlement_status', 'تسویه نشده')
     if remaining_amount > 0:
         settlement_status = 'مانده دارد'
+    elif remaining_amount < 0:
+        # A credit balance is not an unpaid debt, so treat the item as settled.
+        settlement_status = 'تسویه شده'
     elif settlement_status == 'مانده دارد':
         settlement_status = 'تسویه شده'
     elif settlement_status not in ('تسویه شده', 'تسویه نشده'):
