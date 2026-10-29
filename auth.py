@@ -152,7 +152,10 @@ ENDPOINT_PERMISSIONS = {
     'project_wbs': ('project_wbs.view',), 'add_project_wbs': ('project_wbs.create',), 'edit_project_wbs': ('project_wbs.edit',), 'save_selected_project_wbs': ('project_wbs.edit',), 'delete_project_wbs': ('project_wbs.delete',), 'delete_selected_project_wbs': ('project_wbs.delete',), 'import_project_wbs': ('project_wbs.import',), 'download_project_wbs_current': ('project_wbs.export',), 'download_project_wbs_template': ('project_wbs.template',), 'project_progress': ('project_progress.view',), 'project_progress_data': ('project_progress.view',), 'project_wbs_options': ('project_progress.view',), 'download_project_progress_excel': ('project_progress.export',),
     'petty_cash_by_date_range': ('petty_cash_reports.view',), 'petty_cash_by_date': ('petty_cash_reports.view',), 'petty_cash_chart_data': ('petty_cash_reports.view',), 'daily_workers_by_date_range': ('daily_worker_reports.view',), 'facilities_by_date_range': ('facilities_reports.view',),
     'project_upload': ('petty_cash.receipt.view',), 'legacy_project_upload': ('petty_cash.receipt.view',),
-    'select_project': ('projects.select',), 'create_project_route': ('projects.create',), 'edit_project_route': ('projects.edit',), 'begin_project_export': ('projects.export',), 'download_project_export': ('projects.export',), 'cancel_project_export_route': ('projects.delete',), 'delete_project_route': ('projects.delete',),
+    # Project selection is authorized by the user's assigned project IDs in
+    # select_project itself; requiring a separate role permission here blocks
+    # users who were explicitly assigned multiple projects.
+    'create_project_route': ('projects.create',), 'edit_project_route': ('projects.edit',), 'begin_project_export': ('projects.export',), 'download_project_export': ('projects.export',), 'cancel_project_export_route': ('projects.delete',), 'delete_project_route': ('projects.delete',),
     'users': ('users.view',), 'get_permissions_route': ('users.assign_roles',), 'get_user_logs': ('users.logs.view',), 'add_user': ('users.create',), 'delete_user': ('users.delete',), 'edit_user': ('users.edit',), 'update_permissions': ('users.assign_roles',),
     'roles': ('roles.manage',), 'create_role': ('roles.manage',), 'edit_role': ('roles.manage',), 'delete_role': ('roles.manage',),
 }
