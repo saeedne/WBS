@@ -362,6 +362,7 @@
                     <label for="edit_unit_price" class="block text-sm font-medium text-gray-700">فی:</label>
                     <input type="text" id="edit_unit_price" name="unit_price"
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
+                    <p class="mt-1 text-xs text-gray-500">برای ثبت واریزی یا اعتبار، فی را منفی وارد کنید؛ مبلغ کل و مانده با علامت منفی محاسبه می‌شوند.</p>
                 </div>
                 <div>
                     <label for="edit_paid_amount" class="block text-sm font-medium text-gray-700">مبلغ پرداختی (ریال):</label>
@@ -381,7 +382,7 @@
                 </div>
                 <div>
                     <label for="edit_remaining_amount" class="block text-sm font-medium text-gray-700">مبلغ مانده (ریال):</label>
-                    <input type="number" id="edit_remaining_amount" name="remaining_amount" min="0" step="1" required
+                    <input type="number" id="edit_remaining_amount" name="remaining_amount" step="1" required
                            class="w-full p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                 </div>
                 <div>
@@ -614,7 +615,7 @@
         const discount = discountText.includes('%')
             ? grossAmount * (removeNumberFormatting(discountText.replace('%', '')) / 100)
             : removeNumberFormatting(discountText);
-        const totalAmount = Math.max(0, grossAmount - discount);
+        const totalAmount = grossAmount - discount;
         document.getElementById('edit_total_amount').value = formatNumber(totalAmount);
         updateEditRemainingAmount();
     }
@@ -622,22 +623,24 @@
     function syncEditSettlementStatus() {
         const remainingInput = document.getElementById('edit_remaining_amount');
         const statusSelect = document.getElementById('edit_settlement_status');
-        const hasBalance = (Number(remainingInput.value) || 0) > 0;
+        const remaining = Number(remainingInput.value) || 0;
+        const hasBalance = remaining > 0;
         [...statusSelect.options].forEach(option => {
             if (option.value === 'مانده دارد') option.disabled = !hasBalance;
             else option.disabled = hasBalance;
         });
         if (hasBalance) statusSelect.value = 'مانده دارد';
+        else if (remaining < 0) statusSelect.value = 'تسویه شده';
         else if (statusSelect.value === 'مانده دارد') statusSelect.value = 'تسویه شده';
     }
 
     function updateEditRemainingAmount() {
         const total = removeNumberFormatting(document.getElementById('edit_total_amount').value);
         if (editPaidAmountFollowsTotal) {
-            document.getElementById('edit_paid_amount').value = Math.round(total);
+            document.getElementById('edit_paid_amount').value = Math.max(0, Math.round(total));
         }
         const paid = removeNumberFormatting(document.getElementById('edit_paid_amount').value);
-        document.getElementById('edit_remaining_amount').value = Math.max(0, Math.round(total - paid));
+        document.getElementById('edit_remaining_amount').value = Math.round(total - paid);
         syncEditSettlementStatus();
     }
 
