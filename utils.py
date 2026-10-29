@@ -358,6 +358,7 @@ def init_project_registry():
                 start_date TEXT,
                 contract_duration_months INTEGER,
                 estimate_amount REAL,
+                manager_percentage REAL NOT NULL DEFAULT 10,
                 deletion_token TEXT,
                 deletion_started_at TEXT
             )
@@ -368,6 +369,7 @@ def init_project_registry():
             ('start_date', 'TEXT'),
             ('contract_duration_months', 'INTEGER'),
             ('estimate_amount', 'REAL'),
+            ('manager_percentage', 'REAL NOT NULL DEFAULT 10'),
             ('deletion_token', 'TEXT'),
             ('deletion_started_at', 'TEXT'),
         ):
@@ -431,7 +433,8 @@ def init_project_registry():
 
 
 def create_project(name, employer_name=None, start_date=None,
-                   contract_duration_months=None, estimate_amount=None):
+                   contract_duration_months=None, estimate_amount=None,
+                   manager_percentage=10):
     name = (name or '').strip()
     if not name:
         raise ValueError('نام پروژه را وارد کنید.')
@@ -448,11 +451,11 @@ def create_project(name, employer_name=None, start_date=None,
         conn.execute(
             '''INSERT INTO projects
                (id, name, created_at, employer_name, start_date,
-                contract_duration_months, estimate_amount)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                contract_duration_months, estimate_amount, manager_percentage)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
             (project_id, name, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
              (employer_name or '').strip() or None, start_date or None,
-             contract_duration_months, estimate_amount)
+             contract_duration_months, estimate_amount, manager_percentage)
         )
         conn.commit()
         return project_id
@@ -461,7 +464,8 @@ def create_project(name, employer_name=None, start_date=None,
 
 
 def update_project(project_id, name, employer_name=None, start_date=None,
-                   contract_duration_months=None, estimate_amount=None):
+                   contract_duration_months=None, estimate_amount=None,
+                   manager_percentage=10):
     name = (name or '').strip()
     if not name:
         raise ValueError('نام پروژه را وارد کنید.')
@@ -469,13 +473,30 @@ def update_project(project_id, name, employer_name=None, start_date=None,
     try:
         cursor = conn.execute(
             '''UPDATE projects SET name = ?, employer_name = ?, start_date = ?,
-               contract_duration_months = ?, estimate_amount = ? WHERE id = ?''',
+               contract_duration_months = ?, estimate_amount = ?,
+               manager_percentage = ? WHERE id = ?''',
             (name, (employer_name or '').strip() or None, start_date or None,
-             contract_duration_months, estimate_amount, int(project_id))
+             contract_duration_months, estimate_amount, manager_percentage, int(project_id))
         )
         if cursor.rowcount == 0:
             raise ValueError('پروژه پیدا نشد.')
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_project_manager_percentage(project_id=None):
+    """Return the configured manager percentage for a project (legacy default: 10%)."""
+    if project_id is None:
+        project_id = session.get('active_project_id', 1) if has_request_context() else 1
+    conn = get_auth_db_connection()
+    try:
+        row = conn.execute(
+            'SELECT manager_percentage FROM projects WHERE id = ?', (int(project_id),)
+        ).fetchone()
+        if not row or row['manager_percentage'] is None:
+            return 10.0
+        return float(row['manager_percentage'])
     finally:
         conn.close()
 
@@ -842,4 +863,3 @@ def shamsi_to_miladi(shamsi_date_str):
         return g_date
     except (ValueError, IndexError):
         raise ValueError("Invalid Shamsi date format")
-
