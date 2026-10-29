@@ -100,7 +100,7 @@
 <section>
     <div class="flex flex-col sm:flex-row justify-between items-center mb-3 space-y-2 sm:space-y-0">
         <h2 class="text-xl font-bold text-gray-800">گزارش کامل</h2>
-        <a id="export-link" href="#" class="bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center space-x-2 space-x-reverse text-sm my-1 sm:my-0">
+        <a id="export-link" href="#" {% if not can_permission('petty_cash_reports.export') %}hidden{% endif %} class="bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-300 flex items-center space-x-2 space-x-reverse text-sm my-1 sm:my-0">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414L9 3.586V13a1 1 0 112 0V3.586l2.707 2.707a1 1 0 11-1.414 1.414L10 5.414l-2.293 2.293a1 1 0 01-1.414 0z" clip-rule="evenodd" />
             </svg>
@@ -259,24 +259,22 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold remaining-amount-cell {% if record.remaining_amount > 0 %}text-red-600{% else %}text-gray-500{% endif %}">{{ "{:,.0f}".format(record.remaining_amount) }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ record.payer }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold {% if record.settlement_status == 'تسویه شده' %}text-green-600{% else %}text-red-600{% endif %}">{{ record.settlement_status }}</td>
-                        {% if session.get('user', {}).get('role') == 'admin' %}
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium flex space-x-2 space-x-reverse">
+                            {% if can_permission('petty_cash_records.edit') %}
                             <button type="button" onclick="openEditModal(this)" class="text-indigo-600 hover:text-indigo-900 transition duration-300">
                                 ویرایش
                             </button>
-
+                            {% endif %}
+                            {% if can_permission('petty_cash_records.delete') %}
                             <form action="/delete_petty_cash/{{ record.id }}" method="post" class="inline-block"
                                 onsubmit="return confirm('آیا مطمئن هستید که می‌خواهید این رکورد را حذف کنید؟');">
                                 <button type="submit" class="text-red-600 hover:text-red-900 transition duration-300">
                                     حذف
                                 </button>
                             </form>
+                            {% endif %}
+                            {% if not can_permission('petty_cash_records.edit') and not can_permission('petty_cash_records.delete') %}—{% endif %}
                         </td>
-                        {% else %}
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            -
-                        </td>
-                        {% endif %}
                     </tr>
                     {% else %}
                     <tr>
@@ -487,6 +485,7 @@
 <script src="/static/jquery.min.js"></script>
 <script src="/static/kamadatepicker.min.js"></script>
 <script>
+    const projectManagerPercentage = {{ manager_percentage|default(10)|tojson }};
     const editWbsOptions = {{ wbs_options|tojson }};
 
     // تابع کمکی برای جدا کردن ارقام با کاما
@@ -522,7 +521,7 @@
                 if (excluded) {
                     if (personal) managerShare += amount;
                 } else {
-                    managerShare += amount * 0.10;
+                    managerShare += amount * (projectManagerPercentage / 100);
                     if (personal) managerShare += amount;
                 }
             }
@@ -997,4 +996,3 @@
     });
 </script>
 {% endblock %}
-
