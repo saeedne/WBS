@@ -42,6 +42,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 # Initialize modules
 utils.init_db()
 utils.init_project_registry()
+utils.init_registered_project_databases()
 auth.init_auth_system(app)
 
 
